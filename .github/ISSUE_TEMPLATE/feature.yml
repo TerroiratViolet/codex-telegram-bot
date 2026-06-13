@@ -1,0 +1,32 @@
+name: Bot feature request
+description: Describe a small Bot change for Codex to implement.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: user_story
+    attributes:
+      label: What should the Bot do?
+      description: Describe what a Telegram user sends and what the Bot should reply.
+      placeholder: When a user sends /about, reply with the Bot name and purpose.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance examples
+      description: Give at least one exact input and expected result.
+      placeholder: |
+        Input: /about
+        Expected: A short description containing "Schedule Bot".
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety
+      options:
+        - label: This request does not include a bot token, password, or API key.
+          required: true
+

@@ -1,0 +1,17 @@
+[project]
+name = "codex-telegram-bot"
+version = "0.1.0"
+description = "A beginner-friendly Telegram bot with tests and deployment checks."
+requires-python = ">=3.13,<3.14"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
