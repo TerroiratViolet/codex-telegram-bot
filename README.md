@@ -1,5 +1,7 @@
 # Codex Telegram Bot：从零到可发布
 
+[![CI](https://github.com/TerroiratViolet/codex-telegram-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/TerroiratViolet/codex-telegram-bot/actions/workflows/ci.yml)
+
 这是一个给初学者使用的最小完整项目。它不是只展示几行 Bot 代码，而是包含：
 
 - 可运行的 Telegram Bot
