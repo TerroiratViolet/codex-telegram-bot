@@ -37,4 +37,5 @@ Telegram 长轮询本身没有网页。`/healthz` 给部署平台一个明确的
 - GitHub：此项目的 CI 不需要 Token。
 - Railway：真实 Token 仅在 Variables。
 - Codex：只看到变量名称，不应看到变量值。
-
+- HTTP 客户端固定使用 `WARNING` 日志级别，避免 Telegram API URL 中的 Token
+  出现在部署日志。
