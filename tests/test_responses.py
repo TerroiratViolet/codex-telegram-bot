@@ -1,4 +1,4 @@
-from schedule_bot.responses import HELP_TEXT, reply_for_text
+from schedule_bot.responses import ABOUT_TEXT, HELP_TEXT, reply_for_text
 
 
 def test_start_uses_first_name() -> None:
@@ -11,6 +11,13 @@ def test_help_lists_core_commands() -> None:
     assert reply_for_text("/help") == HELP_TEXT
     assert "/start" in HELP_TEXT
     assert "/ping" in HELP_TEXT
+    assert "/about" in HELP_TEXT
+
+
+def test_about_describes_bot() -> None:
+    assert reply_for_text("/about") == ABOUT_TEXT
+    assert "TerroirTester" in ABOUT_TEXT
+    assert "Codex 完整开发流程" in ABOUT_TEXT
 
 
 def test_ping_reports_online() -> None:
@@ -27,4 +34,3 @@ def test_plain_text_is_echoed() -> None:
 
 def test_unknown_command_has_safe_help() -> None:
     assert "/help" in reply_for_text("/missing")
-

@@ -32,10 +32,9 @@ async def log_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def build_application(token: str) -> Application:
     application = Application.builder().token(token).build()
-    for command in ("start", "help", "ping"):
+    for command in ("start", "help", "ping", "about"):
         application.add_handler(CommandHandler(command, reply))
     application.add_handler(MessageHandler(filters.COMMAND, reply))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
     application.add_error_handler(log_error)
     return application
-
