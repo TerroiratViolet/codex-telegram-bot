@@ -15,6 +15,7 @@ HELP_TEXT = (
     "/ping - 检查 Bot 是否在线\n"
     "/about - 了解这个 Bot\n"
     "/whoami - 查看自己的 Telegram 数字 ID\n"
+    "/llmcheck - 管理员检查 OpenAI 连接与模型权限\n"
     "/tarot - 管理员回复某位用户后发起塔罗投射练习\n\n"
     "你也可以直接发送普通文字。"
 )

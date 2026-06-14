@@ -10,6 +10,7 @@ from schedule_bot.handlers import (
     TAROT_INTROS,
     _is_expected_reply,
     build_application,
+    llmcheck,
     tarot_consent,
     tarot_start,
     tarot_text_router,
@@ -24,6 +25,7 @@ def _settings(*, with_openai: bool = False) -> Settings:
         telegram_admin_user_ids=frozenset({42}),
         openai_api_key="test-key" if with_openai else "",
         openai_model="test-model",
+        openai_fallback_model="fallback-model",
         port=8080,
         log_level="INFO",
     )
@@ -90,6 +92,70 @@ def test_non_admin_cannot_start_tarot() -> None:
     asyncio.run(tarot_start(update, context))
 
     message.reply_text.assert_awaited_once_with("这项仪式只对 Terroir 管理员开放。")
+
+
+def test_llmcheck_reports_configured_analyzer_status() -> None:
+    class FakeAnalyzer:
+        def check_connection(self):
+            return SimpleNamespace(
+                ok=True,
+                message="OpenAI 连接正常，模型 fallback-model 可用。",
+            )
+
+    message = SimpleNamespace(reply_text=AsyncMock())
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=42),
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data={
+                "tarot_store": TarotSessionStore(),
+                "tarot_admin_ids": frozenset({42}),
+                "tarot_analyzer": FakeAnalyzer(),
+            }
+        )
+    )
+
+    asyncio.run(llmcheck(update, context))
+
+    assert message.reply_text.await_count == 2
+    assert "正在检查 OpenAI" in message.reply_text.await_args_list[0].args[0]
+    assert "LLM 检查通过" in message.reply_text.await_args_list[1].args[0]
+
+
+def test_llmcheck_requires_admin_and_openai_configuration() -> None:
+    non_admin_message = SimpleNamespace(reply_text=AsyncMock())
+    non_admin_update = SimpleNamespace(
+        effective_message=non_admin_message,
+        effective_user=SimpleNamespace(id=99),
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data={
+                "tarot_store": TarotSessionStore(),
+                "tarot_admin_ids": frozenset({42}),
+            }
+        )
+    )
+
+    asyncio.run(llmcheck(non_admin_update, context))
+
+    non_admin_message.reply_text.assert_awaited_once_with(
+        "这项检查只对 Terroir 管理员开放。"
+    )
+
+    admin_message = SimpleNamespace(reply_text=AsyncMock())
+    admin_update = SimpleNamespace(
+        effective_message=admin_message,
+        effective_user=SimpleNamespace(id=42),
+    )
+
+    asyncio.run(llmcheck(admin_update, context))
+
+    admin_message.reply_text.assert_awaited_once_with(
+        "OpenAI 尚未配置：请在 Railway Variables 中设置 OPENAI_API_KEY。"
+    )
 
 
 def test_tarot_start_sends_separate_admin_and_user_interfaces() -> None:

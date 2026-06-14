@@ -12,6 +12,7 @@ class Settings:
     telegram_admin_user_ids: frozenset[int]
     openai_api_key: str
     openai_model: str
+    openai_fallback_model: str
     port: int
     log_level: str
 
@@ -56,6 +57,9 @@ class Settings:
             telegram_admin_user_ids=admin_ids,
             openai_api_key=openai_api_key,
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5.5").strip() or "gpt-5.5",
+            openai_fallback_model=os.getenv(
+                "OPENAI_FALLBACK_MODEL", "gpt-5.4-mini"
+            ).strip(),
             port=port,
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         )

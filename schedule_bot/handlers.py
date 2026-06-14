@@ -20,7 +20,7 @@ from telegram.ext import (
 
 from schedule_bot.config import Settings
 from schedule_bot.responses import reply_for_text
-from schedule_bot.tarot_analysis import TarotAnalyzer
+from schedule_bot.tarot_analysis import TarotAnalysisError, TarotAnalyzer
 from schedule_bot.tarot_cards import draw_major_arcana
 from schedule_bot.tarot_sessions import TarotSession, TarotSessionStore, TarotStage
 
@@ -93,6 +93,37 @@ async def whoami(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(
         f"你的 Telegram 数字 ID：{update.effective_user.id}\n"
         "只有管理员需要把这个数字加入 TELEGRAM_ADMIN_USER_IDS。"
+    )
+
+
+async def llmcheck(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    user = update.effective_user
+    if message is None or user is None:
+        return
+
+    admin_ids: frozenset[int] = context.application.bot_data["tarot_admin_ids"]
+    if user.id not in admin_ids:
+        await message.reply_text("这项检查只对 Terroir 管理员开放。")
+        return
+
+    _, analyzer = _stores(context)
+    if analyzer is None:
+        await message.reply_text(
+            "OpenAI 尚未配置：请在 Railway Variables 中设置 OPENAI_API_KEY。"
+        )
+        return
+
+    await message.reply_text("正在检查 OpenAI 连接与模型权限……")
+    check = await asyncio.to_thread(analyzer.check_connection)
+    if check.ok:
+        await message.reply_text(f"LLM 检查通过：{check.message}")
+        return
+    await message.reply_text(
+        "LLM 检查失败："
+        f"{check.message}\n\n"
+        "请检查 Railway Variables 中的 OPENAI_API_KEY、OPENAI_MODEL、"
+        "OPENAI_FALLBACK_MODEL、OpenAI 项目余额和模型权限。"
     )
 
 
@@ -376,6 +407,19 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     )
     try:
         analysis = await asyncio.to_thread(analyzer.analyze, session)
+    except TarotAnalysisError as error:
+        LOGGER.exception("Tarot analysis failed for session_id=%s", session.session_id)
+        store.save(session.with_updates(stage=TarotStage.COMPLETE))
+        await context.bot.send_message(
+            chat_id=session.admin_user_id,
+            text=(
+                "LLM 分析暂时失败。用户回答没有被公开。\n"
+                f"安全错误原因：{error.safe_message}\n"
+                "你可以私聊 Bot 发送 /llmcheck 做一次独立检查。\n"
+                f"会话：{session.session_id}"
+            ),
+        )
+        return
     except Exception:
         LOGGER.exception("Tarot analysis failed for session_id=%s", session.session_id)
         store.save(session.with_updates(stage=TarotStage.COMPLETE))
@@ -435,11 +479,13 @@ def build_application(settings: Settings) -> Application:
         application.bot_data["tarot_analyzer"] = TarotAnalyzer(
             api_key=settings.openai_api_key,
             model=settings.openai_model,
+            fallback_model=settings.openai_fallback_model,
         )
 
     for command in ("start", "help", "ping", "about"):
         application.add_handler(CommandHandler(command, reply))
     application.add_handler(CommandHandler("whoami", whoami))
+    application.add_handler(CommandHandler("llmcheck", llmcheck))
     application.add_handler(CommandHandler("tarot", tarot_start))
     application.add_handler(
         CallbackQueryHandler(tarot_consent, pattern=r"^tarot:(yes|no):")

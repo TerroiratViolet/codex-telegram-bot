@@ -318,6 +318,7 @@ API 调用可能产生费用。
 ```text
 OPENAI_API_KEY=你的真实Key
 OPENAI_MODEL=gpt-5.5
+OPENAI_FALLBACK_MODEL=gpt-5.4-mini
 ```
 
 生产环境最终需要以下变量：
@@ -327,11 +328,15 @@ TELEGRAM_BOT_TOKEN
 TELEGRAM_ADMIN_USER_IDS
 OPENAI_API_KEY
 OPENAI_MODEL=gpt-5.5
+OPENAI_FALLBACK_MODEL=gpt-5.4-mini
 LOG_LEVEL=WARNING
 ```
 
 用户的 A/B/C 回答和牌面象征资料会在用户同意后发送给 OpenAI，代码明确设置
 `store=False`。不要引导用户输入身份证件、地址、密码、详细医疗记录等不必要信息。
+
+管理员可以私聊 Bot 发送 `/llmcheck`，单独检查 OpenAI API Key、模型权限和备用模型是否可用。
+如果主模型暂时不可用，Bot 会自动尝试 `OPENAI_FALLBACK_MODEL`，避免完整塔罗流程在最后一步失败。
 
 ### 11.5 群组使用流程
 

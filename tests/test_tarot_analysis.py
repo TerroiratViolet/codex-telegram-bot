@@ -1,9 +1,12 @@
 from datetime import UTC, datetime
 
+import httpx
 import pytest
+from openai import AuthenticationError, NotFoundError
 
 from schedule_bot.tarot_analysis import (
     ADMIN_ANALYSIS_INSTRUCTIONS,
+    TarotAnalysisError,
     TarotAnalyzer,
     analysis_input_from_session,
     build_analysis_prompt,
@@ -66,6 +69,7 @@ def test_analyzer_disables_response_storage() -> None:
     analyzer = TarotAnalyzer.__new__(TarotAnalyzer)
     analyzer._client = type("Client", (), {"responses": FakeResponses()})()
     analyzer._model = "test-model"
+    analyzer._fallback_model = ""
 
     result = analyzer.analyze(_complete_session())
 
@@ -73,3 +77,75 @@ def test_analyzer_disables_response_storage() -> None:
     assert calls[0]["model"] == "test-model"
     assert calls[0]["store"] is False
     assert calls[0]["max_output_tokens"] == 3000
+
+
+def test_analyzer_falls_back_when_primary_model_is_unavailable() -> None:
+    calls = []
+
+    class FakeResponses:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs["model"] == "primary-model":
+                request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+                response = httpx.Response(404, request=request)
+                raise NotFoundError(
+                    "model not found",
+                    response=response,
+                    body=None,
+                )
+            return type("Response", (), {"output_text": "备用模型分析"})()
+
+    analyzer = TarotAnalyzer.__new__(TarotAnalyzer)
+    analyzer._client = type("Client", (), {"responses": FakeResponses()})()
+    analyzer._model = "primary-model"
+    analyzer._fallback_model = "fallback-model"
+
+    result = analyzer.analyze(_complete_session())
+
+    assert [call["model"] for call in calls] == ["primary-model", "fallback-model"]
+    assert "主模型 primary-model 暂时不可用" in result
+    assert "备用模型 fallback-model" in result
+    assert "备用模型分析" in result
+
+
+def test_health_check_reports_safe_authentication_error() -> None:
+    class FakeResponses:
+        def create(self, **kwargs):
+            request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+            response = httpx.Response(401, request=request)
+            raise AuthenticationError(
+                "invalid api key",
+                response=response,
+                body=None,
+            )
+
+    analyzer = TarotAnalyzer.__new__(TarotAnalyzer)
+    analyzer._client = type("Client", (), {"responses": FakeResponses()})()
+    analyzer._model = "primary-model"
+    analyzer._fallback_model = "fallback-model"
+
+    check = analyzer.check_connection()
+
+    assert not check.ok
+    assert check.model is None
+    assert "API Key 无效" in check.message
+
+
+def test_unrecoverable_openai_error_uses_safe_message() -> None:
+    class FakeResponses:
+        def create(self, **kwargs):
+            request = httpx.Request("POST", "https://api.openai.com/v1/responses")
+            response = httpx.Response(401, request=request)
+            raise AuthenticationError(
+                "invalid api key",
+                response=response,
+                body=None,
+            )
+
+    analyzer = TarotAnalyzer.__new__(TarotAnalyzer)
+    analyzer._client = type("Client", (), {"responses": FakeResponses()})()
+    analyzer._model = "primary-model"
+    analyzer._fallback_model = "fallback-model"
+
+    with pytest.raises(TarotAnalysisError, match="API Key"):
+        analyzer.analyze(_complete_session())

@@ -16,6 +16,7 @@ def test_settings_read_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TELEGRAM_ADMIN_USER_IDS", "123, 456")
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     monkeypatch.setenv("OPENAI_MODEL", "test-model")
+    monkeypatch.setenv("OPENAI_FALLBACK_MODEL", "fallback-model")
     monkeypatch.setenv("PORT", "9000")
     monkeypatch.setenv("LOG_LEVEL", "debug")
 
@@ -25,6 +26,7 @@ def test_settings_read_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.telegram_admin_user_ids == frozenset({123, 456})
     assert settings.openai_api_key == "test-openai-key"
     assert settings.openai_model == "test-model"
+    assert settings.openai_fallback_model == "fallback-model"
     assert settings.port == 9000
     assert settings.log_level == "DEBUG"
 
@@ -42,12 +44,14 @@ def test_optional_tarot_settings_default_safely(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.delenv("TELEGRAM_ADMIN_USER_IDS", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_FALLBACK_MODEL", raising=False)
 
     settings = Settings.from_env(load_env_file=False)
 
     assert settings.telegram_admin_user_ids == frozenset()
     assert settings.openai_api_key == ""
     assert settings.openai_model == "gpt-5.5"
+    assert settings.openai_fallback_model == "gpt-5.4-mini"
 
 
 def test_openai_placeholder_is_not_treated_as_a_real_key(
