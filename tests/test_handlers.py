@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -7,6 +8,7 @@ from telegram.error import TelegramError
 
 from schedule_bot.config import Settings
 from schedule_bot.handlers import (
+    TAROT_CONSENT_IMAGES,
     TAROT_INTROS,
     _is_expected_reply,
     build_application,
@@ -15,7 +17,7 @@ from schedule_bot.handlers import (
     tarot_start,
     tarot_text_router,
 )
-from schedule_bot.tarot_cards import MAJOR_ARCANA
+from schedule_bot.tarot_cards import TAROT_DECK
 from schedule_bot.tarot_sessions import TarotSession, TarotSessionStore, TarotStage
 
 
@@ -149,7 +151,7 @@ def test_llmcheck_reports_configured_analyzer_status() -> None:
 
     assert message.reply_text.await_count == 2
     assert "正在检查 Gemini" in message.reply_text.await_args_list[0].args[0]
-    assert "LLM 检查通过" in message.reply_text.await_args_list[1].args[0]
+    assert "占卜助手检查通过" in message.reply_text.await_args_list[1].args[0]
 
 
 def test_llmcheck_requires_admin_and_openai_configuration() -> None:
@@ -184,7 +186,7 @@ def test_llmcheck_requires_admin_and_openai_configuration() -> None:
     asyncio.run(llmcheck(admin_update, context))
 
     admin_message.reply_text.assert_awaited_once_with(
-        "LLM 尚未配置：推荐在 Railway Variables 中设置 GEMINI_API_KEY，"
+        "占卜助手尚未配置：推荐在 Railway Variables 中设置 GEMINI_API_KEY，"
         "并设置 LLM_PROVIDER=gemini。"
     )
 
@@ -220,12 +222,12 @@ def test_llmcheck_sends_detailed_results_privately_from_group() -> None:
     asyncio.run(llmcheck(update, context))
 
     group_message.reply_text.assert_awaited_once_with(
-        "LLM 检查结果只会私聊给管理员。"
+        "占卜助手检查结果只会私聊给管理员。"
     )
     assert admin_dm.await_count == 2
     assert all(call.kwargs["chat_id"] == 42 for call in admin_dm.await_args_list)
     assert "正在检查 Gemini" in admin_dm.await_args_list[0].kwargs["text"]
-    assert "LLM 检查失败" in admin_dm.await_args_list[1].kwargs["text"]
+    assert "占卜助手检查失败" in admin_dm.await_args_list[1].kwargs["text"]
     assert "没有权限使用配置的模型" in admin_dm.await_args_list[1].kwargs["text"]
 
 
@@ -265,11 +267,12 @@ def test_tarot_start_sends_separate_admin_and_user_interfaces() -> None:
     admin_kwargs = context.bot.send_photo.await_args.kwargs
     assert admin_kwargs["chat_id"] == 42
     assert "Terroir 管理界面" in admin_kwargs["caption"]
-    assert "LLM 分析：Gemini" in admin_kwargs["caption"]
+    assert "占卜助手：Gemini" in admin_kwargs["caption"]
     assert "分析只会送到这里" in admin_kwargs["caption"]
 
     message.reply_photo.assert_awaited_once()
     user_kwargs = message.reply_photo.await_args.kwargs
+    assert Path(user_kwargs["photo"].name) in TAROT_CONSENT_IMAGES
     assert "@guest" in user_kwargs["caption"]
     assert "我愿意开始" in [
         button.text
@@ -281,7 +284,7 @@ def test_tarot_start_sends_separate_admin_and_user_interfaces() -> None:
         for row in user_kwargs["reply_markup"].inline_keyboard
         for button in row
     ]
-    assert "仅私聊发送给管理员" in user_kwargs["caption"]
+    assert "仅私聊发送给 Terroir" in user_kwargs["caption"]
     assert store.get_active_for_user(-100, 7) is not None
 
 
@@ -390,10 +393,7 @@ def test_card_upload_failure_ends_session(
             bot_data={"tarot_store": store, "tarot_analyzer": None}
         )
     )
-    monkeypatch.setattr(
-        "schedule_bot.handlers.draw_major_arcana",
-        lambda: MAJOR_ARCANA[0],
-    )
+    monkeypatch.setattr("schedule_bot.handlers.draw_tarot_card", lambda: TAROT_DECK[0])
 
     asyncio.run(tarot_text_router(update, context))
 
@@ -462,10 +462,7 @@ def test_complete_tarot_analysis_is_sent_only_to_admin(
         ),
         bot=SimpleNamespace(send_message=admin_send),
     )
-    monkeypatch.setattr(
-        "schedule_bot.handlers.draw_major_arcana",
-        lambda: MAJOR_ARCANA[0],
-    )
+    monkeypatch.setattr("schedule_bot.handlers.draw_tarot_card", lambda: TAROT_DECK[0])
 
     question_update, question_message = user_update(
         text="问题 A：我是否应该离开现在的工作？",
@@ -494,7 +491,7 @@ def test_complete_tarot_analysis_is_sent_only_to_admin(
     assert completed.question_a == "问题 A：我是否应该离开现在的工作？"
     assert completed.answer_b == "问题 B：我先看到悬崖、白玫瑰和远山。"
     assert completed.answer_c == "问题 C：他想自由前进，也担心跌落。"
-    assert completed.card == MAJOR_ARCANA[0]
+    assert completed.card == TAROT_DECK[0]
     assert analyzer.received_session == completed.with_updates(
         stage=TarotStage.ANALYZING
     )

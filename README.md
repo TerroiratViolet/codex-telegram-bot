@@ -265,7 +265,7 @@ Codex Web 可以连接 GitHub 仓库、在云环境执行任务并创建 Pull Re
    - 问题 A：用户真正想问的问题。
    - 问题 B：用户第一眼在随机牌面中看见了什么。
    - 问题 C：用户如何理解牌面，以及它与问题 A 的关系。
-5. 从 22 张 Rider–Waite–Smith 大阿尔卡那中随机抽取一张，在群组中显示并
+5. 从 78 张 Rider–Waite–Smith 标准牌组中随机抽取一张，在群组中显示并
    `@` 用户。
 6. 把问题 A、回答 B/C 和该牌的结构化象征资料发送给已配置的 LLM provider。
 7. 仅在管理员与 Bot 的私聊中发送分析。群组用户不会看到 LLM 的心理解释。
@@ -369,10 +369,12 @@ OPENAI_FALLBACK_MODEL=gpt-5.4-mini
 
 ### 11.7 图片与牌面来源
 
-- 管理员图与用户授权图由项目专门生成，分别位于
-  `schedule_bot/assets/tarot-admin.png` 和 `schedule_bot/assets/tarot-consent.png`。
-- 牌面使用 1909 年 Rider–Waite–Smith 大阿尔卡那图像，22 张图片已随项目打包，
-  不依赖运行时外部图片链接。
+- 管理员图由项目专门生成，位于 `schedule_bot/assets/tarot-admin.png`。
+- 用户授权图是 10 张随机 Terroir 场景图，位于
+  `schedule_bot/assets/tarot-consent-01.jpg` 到 `tarot-consent-10.jpg`。场景包括
+  紫罗兰酒馆、紫罗兰花园、地下酒窖、图书馆和剧场。
+- 牌面使用 1909 年 Rider–Waite–Smith 标准 78 张牌图像，已随项目打包，不依赖
+  运行时外部图片链接。
 - 每张牌在 `schedule_bot/tarot_cards.py` 中定义视觉元素、原型、光明面、阴影面和
   投射观察重点。LLM 必须结合用户自己的 B/C 回答，不能只输出固定牌义。
 - 原画由 Pamela Colman Smith 创作，最初于 1909 年出版。原始版本已进入公共领域；
