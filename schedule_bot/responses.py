@@ -3,7 +3,7 @@ from __future__ import annotations
 START_TEMPLATE = (
     "你好，{name}！\n\n"
     "这个 Bot 已经成功运行。\n"
-    "发送 /help 查看命令，或直接发一段文字让我复述。"
+    "发送 /help 查看可用命令。"
 )
 
 ABOUT_TEXT = "TerroirTester\n用于演示 Codex 完整开发流程"
@@ -16,8 +16,7 @@ HELP_TEXT = (
     "/about - 了解这个 Bot\n"
     "/whoami - 查看自己的 Telegram 数字 ID\n"
     "/llmcheck - 管理员检查 LLM 连接与模型权限\n"
-    "/tarot - 管理员回复某位用户后发起塔罗投射练习\n\n"
-    "你也可以直接发送普通文字。"
+    "/tarot - 管理员回复某位用户后发起塔罗投射练习"
 )
 
 
@@ -40,4 +39,4 @@ def reply_for_text(text: str, first_name: str = "朋友") -> str:
     if not normalized:
         return "请发送文字，或发送 /help 查看可用命令。"
 
-    return f"你说：{normalized}"
+    return "普通文字我不会复述。请发送 /help 查看可用命令。"

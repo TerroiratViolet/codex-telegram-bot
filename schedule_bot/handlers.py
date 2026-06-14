@@ -314,7 +314,6 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     store, analyzer = _stores(context)
     session = store.get_active_for_user(chat.id, user.id)
     if session is None:
-        await reply(update, context)
         return
 
     if not _is_expected_reply(update, session):

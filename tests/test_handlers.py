@@ -82,6 +82,27 @@ def test_tarot_answer_must_reply_to_the_exact_prompt() -> None:
     assert not _is_expected_reply(wrong_update, session)
 
 
+def test_plain_text_without_tarot_session_is_ignored() -> None:
+    message = SimpleNamespace(
+        text="管理员在群里的普通聊天",
+        reply_text=AsyncMock(),
+    )
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=42),
+        effective_chat=SimpleNamespace(id=-100),
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data={"tarot_store": TarotSessionStore(), "tarot_analyzer": None}
+        )
+    )
+
+    asyncio.run(tarot_text_router(update, context))
+
+    message.reply_text.assert_not_awaited()
+
+
 def test_non_admin_cannot_start_tarot() -> None:
     message = SimpleNamespace(reply_text=AsyncMock())
     update = SimpleNamespace(
