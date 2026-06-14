@@ -1,8 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
-from openai import OpenAI
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    NotFoundError,
+    OpenAI,
+    OpenAIError,
+    PermissionDeniedError,
+    RateLimitError,
+)
 
 from schedule_bot.tarot_sessions import TarotSession
 
@@ -55,6 +67,27 @@ class TarotAnalysisInput:
     answer_c: str
 
 
+@dataclass(frozen=True)
+class LLMHealthCheck:
+    ok: bool
+    model: str | None
+    message: str
+
+
+class TarotAnalysisError(RuntimeError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.safe_message = message
+
+
+class TarotAnalysisProvider(Protocol):
+    provider_name: str
+
+    def analyze(self, session: TarotSession) -> str: ...
+
+    def check_connection(self) -> LLMHealthCheck: ...
+
+
 def analysis_input_from_session(session: TarotSession) -> TarotAnalysisInput:
     if not all((session.card, session.question_a, session.answer_b, session.answer_c)):
         raise ValueError("Tarot session is incomplete.")
@@ -103,21 +136,254 @@ def build_analysis_prompt(data: TarotAnalysisInput) -> str:
 """.strip()
 
 
-class TarotAnalyzer:
-    def __init__(self, *, api_key: str, model: str) -> None:
-        self._client = OpenAI(api_key=api_key, timeout=60)
+class GeminiTarotAnalyzer:
+    provider_name = "Gemini"
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str = "gemini-2.5-flash",
+        fallback_model: str = "",
+    ) -> None:
+        from google import genai
+        from google.genai import types
+
+        self._client = genai.Client(api_key=api_key)
+        self._types = types
         self._model = model
+        self._fallback_model = fallback_model
+
+    @property
+    def models(self) -> tuple[str, ...]:
+        models = [self._model]
+        if self._fallback_model and self._fallback_model not in models:
+            models.append(self._fallback_model)
+        return tuple(models)
 
     def analyze(self, session: TarotSession) -> str:
         data = analysis_input_from_session(session)
-        response = self._client.responses.create(
-            model=self._model,
+        return self._create_with_fallback(
             instructions=ADMIN_ANALYSIS_INSTRUCTIONS,
-            input=build_analysis_prompt(data),
+            input_text=build_analysis_prompt(data),
             max_output_tokens=3000,
-            store=False,
         )
-        text = response.output_text.strip()
-        if not text:
-            raise RuntimeError("The analysis model returned an empty response.")
-        return text
+
+    def check_connection(self) -> LLMHealthCheck:
+        try:
+            model = self._create_with_fallback(
+                instructions="你只需要回复 OK。",
+                input_text="请回复 OK，确认 Gemini API、模型与项目权限可用。",
+                max_output_tokens=20,
+                return_model=True,
+            )
+        except TarotAnalysisError as error:
+            return LLMHealthCheck(
+                ok=False,
+                model=None,
+                message=error.safe_message,
+            )
+        return LLMHealthCheck(
+            ok=True,
+            model=model,
+            message=f"Gemini 连接正常，模型 {model} 可用。",
+        )
+
+    def _create_with_fallback(
+        self,
+        *,
+        instructions: str,
+        input_text: str,
+        max_output_tokens: int,
+        return_model: bool = False,
+    ) -> str:
+        first_error: Exception | None = None
+        for index, model in enumerate(self.models):
+            try:
+                response = self._client.models.generate_content(
+                    model=model,
+                    contents=input_text,
+                    config=self._types.GenerateContentConfig(
+                        system_instruction=instructions,
+                        max_output_tokens=max_output_tokens,
+                    ),
+                )
+            except Exception as error:
+                if index == 0 and _can_try_gemini_fallback(error) and len(self.models) > 1:
+                    first_error = error
+                    continue
+                raise TarotAnalysisError(_safe_gemini_error_message(error)) from error
+
+            text = (getattr(response, "text", "") or "").strip()
+            if not text:
+                raise TarotAnalysisError("Gemini 返回了空回复，请稍后重试。")
+            if return_model:
+                return model
+            if first_error is not None:
+                return (
+                    f"【系统提示】主模型 {self._model} 暂时不可用，"
+                    f"本次已自动改用备用模型 {model}。\n\n{text}"
+                )
+            return text
+
+        raise TarotAnalysisError("Gemini 分析暂时失败，请稍后重试。")
+
+
+class OpenAITarotAnalyzer:
+    provider_name = "OpenAI"
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        fallback_model: str = "gpt-5.4-mini",
+    ) -> None:
+        self._client = OpenAI(api_key=api_key, timeout=60)
+        self._model = model
+        self._fallback_model = fallback_model
+
+    @property
+    def models(self) -> tuple[str, ...]:
+        models = [self._model]
+        if self._fallback_model and self._fallback_model not in models:
+            models.append(self._fallback_model)
+        return tuple(models)
+
+    def analyze(self, session: TarotSession) -> str:
+        data = analysis_input_from_session(session)
+        return self._create_with_fallback(
+            instructions=ADMIN_ANALYSIS_INSTRUCTIONS,
+            input_text=build_analysis_prompt(data),
+            max_output_tokens=3000,
+        )
+
+    def check_connection(self) -> LLMHealthCheck:
+        try:
+            model = self._create_with_fallback(
+                instructions="你只需要回复 OK。",
+                input_text="请回复 OK，确认 API、模型与项目权限可用。",
+                max_output_tokens=20,
+                return_model=True,
+            )
+        except TarotAnalysisError as error:
+            return LLMHealthCheck(
+                ok=False,
+                model=None,
+                message=error.safe_message,
+            )
+        return LLMHealthCheck(
+            ok=True,
+            model=model,
+            message=f"OpenAI 连接正常，模型 {model} 可用。",
+        )
+
+    def _create_with_fallback(
+        self,
+        *,
+        instructions: str,
+        input_text: str,
+        max_output_tokens: int,
+        return_model: bool = False,
+    ) -> str:
+        first_error: OpenAIError | Exception | None = None
+        for index, model in enumerate(self.models):
+            try:
+                response = self._client.responses.create(
+                    model=model,
+                    instructions=instructions,
+                    input=input_text,
+                    max_output_tokens=max_output_tokens,
+                    store=False,
+                )
+            except OpenAIError as error:
+                if index == 0 and _can_try_fallback(error) and len(self.models) > 1:
+                    first_error = error
+                    continue
+                raise TarotAnalysisError(_safe_openai_error_message(error)) from error
+
+            text = response.output_text.strip()
+            if not text:
+                raise TarotAnalysisError("OpenAI 返回了空回复，请稍后重试。")
+            if return_model:
+                return model
+            if first_error is not None:
+                return (
+                    f"【系统提示】主模型 {self._model} 暂时不可用，"
+                    f"本次已自动改用备用模型 {model}。\n\n{text}"
+                )
+            return text
+
+        raise TarotAnalysisError("OpenAI 分析暂时失败，请稍后重试。")
+
+
+TarotAnalyzer = OpenAITarotAnalyzer
+
+
+def _can_try_gemini_fallback(error: Exception) -> bool:
+    code = _gemini_error_code(error)
+    if code in {400, 403, 404}:
+        return True
+    message = str(error).lower()
+    return "model" in message or "permission" in message or "not found" in message
+
+
+def _gemini_error_code(error: Exception) -> int | None:
+    code = getattr(error, "code", None)
+    if isinstance(code, int):
+        return code
+    status_code = getattr(error, "status_code", None)
+    if isinstance(status_code, int):
+        return status_code
+    response = getattr(error, "response", None)
+    response_status = getattr(response, "status_code", None)
+    if isinstance(response_status, int):
+        return response_status
+    return None
+
+
+def _safe_gemini_error_message(error: Exception) -> str:
+    code = _gemini_error_code(error)
+    if code in {401, 403}:
+        return "Gemini API Key 无效，或当前 Google AI 项目没有权限使用配置的模型。"
+    if code == 404:
+        return "配置的 Gemini 模型在当前账号、区域或 API 版本中不可用。"
+    if code == 429:
+        return "Gemini 免费额度、速率限制或配额已经达到上限。"
+    if code == 400:
+        return "Gemini 拒绝了本次请求参数，请检查模型配置或 SDK 兼容性。"
+    if code and code >= 500:
+        return f"Gemini 服务返回错误状态码 {code}，请稍后重试。"
+    message = str(error).lower()
+    if "api key" in message:
+        return "Gemini API Key 无效、缺失或未被当前服务读取。"
+    if "quota" in message or "rate" in message:
+        return "Gemini 免费额度、速率限制或配额已经达到上限。"
+    return "Gemini 分析暂时失败，请检查 API Key、模型名称、免费额度和项目权限。"
+
+
+def _can_try_fallback(error: OpenAIError) -> bool:
+    if isinstance(error, (NotFoundError, PermissionDeniedError)):
+        return True
+    if isinstance(error, BadRequestError):
+        message = str(error).lower()
+        return "model" in message
+    return False
+
+
+def _safe_openai_error_message(error: OpenAIError) -> str:
+    if isinstance(error, AuthenticationError):
+        return "OpenAI API Key 无效、已撤销，或不属于当前 Railway 项目。"
+    if isinstance(error, PermissionDeniedError):
+        return "当前 OpenAI 项目或 API Key 没有权限使用配置的模型。"
+    if isinstance(error, NotFoundError):
+        return "配置的 OpenAI 模型在当前账号或项目中不可用。"
+    if isinstance(error, RateLimitError):
+        return "OpenAI 调用达到额度、余额或速率限制。"
+    if isinstance(error, (APIConnectionError, APITimeoutError)):
+        return "连接 OpenAI 超时或网络暂时不可用。"
+    if isinstance(error, BadRequestError):
+        return "OpenAI 拒绝了本次请求参数，请检查模型配置或 SDK 兼容性。"
+    if isinstance(error, APIStatusError):
+        return f"OpenAI 服务返回错误状态码 {error.status_code}，请稍后重试。"
+    return "OpenAI 分析暂时失败，请检查 API Key、模型权限、余额和项目配置。"

@@ -10,8 +10,13 @@ from dotenv import load_dotenv
 class Settings:
     telegram_bot_token: str
     telegram_admin_user_ids: frozenset[int]
+    llm_provider: str
+    gemini_api_key: str
+    gemini_model: str
+    gemini_fallback_model: str
     openai_api_key: str
     openai_model: str
+    openai_fallback_model: str
     port: int
     log_level: str
 
@@ -50,12 +55,31 @@ class Settings:
         openai_api_key = os.getenv("OPENAI_API_KEY", "").strip()
         if openai_api_key == "replace-with-openai-api-key":
             openai_api_key = ""
+        gemini_api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if gemini_api_key == "replace-with-gemini-api-key":
+            gemini_api_key = ""
+
+        raw_provider = os.getenv("LLM_PROVIDER", "auto").strip().lower() or "auto"
+        if raw_provider == "auto":
+            llm_provider = "gemini" if gemini_api_key else "openai"
+        elif raw_provider in {"gemini", "openai"}:
+            llm_provider = raw_provider
+        else:
+            raise ValueError("LLM_PROVIDER must be auto, gemini, or openai.")
 
         return cls(
             telegram_bot_token=token,
             telegram_admin_user_ids=admin_ids,
+            llm_provider=llm_provider,
+            gemini_api_key=gemini_api_key,
+            gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+            or "gemini-2.5-flash",
+            gemini_fallback_model=os.getenv("GEMINI_FALLBACK_MODEL", "").strip(),
             openai_api_key=openai_api_key,
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5.5").strip() or "gpt-5.5",
+            openai_fallback_model=os.getenv(
+                "OPENAI_FALLBACK_MODEL", "gpt-5.4-mini"
+            ).strip(),
             port=port,
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         )

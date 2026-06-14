@@ -10,6 +10,7 @@ from schedule_bot.handlers import (
     TAROT_INTROS,
     _is_expected_reply,
     build_application,
+    llmcheck,
     tarot_consent,
     tarot_start,
     tarot_text_router,
@@ -18,12 +19,17 @@ from schedule_bot.tarot_cards import MAJOR_ARCANA
 from schedule_bot.tarot_sessions import TarotSession, TarotSessionStore, TarotStage
 
 
-def _settings(*, with_openai: bool = False) -> Settings:
+def _settings(*, with_gemini: bool = False, with_openai: bool = False) -> Settings:
     return Settings(
         telegram_bot_token="123456:TEST_TOKEN",
         telegram_admin_user_ids=frozenset({42}),
+        llm_provider="openai" if with_openai else "gemini",
+        gemini_api_key="test-gemini-key" if with_gemini else "",
+        gemini_model="gemini-test-model",
+        gemini_fallback_model="",
         openai_api_key="test-key" if with_openai else "",
         openai_model="test-model",
+        openai_fallback_model="fallback-model",
         port=8080,
         log_level="INFO",
     )
@@ -92,6 +98,116 @@ def test_non_admin_cannot_start_tarot() -> None:
     message.reply_text.assert_awaited_once_with("这项仪式只对 Terroir 管理员开放。")
 
 
+def test_llmcheck_reports_configured_analyzer_status() -> None:
+    class FakeAnalyzer:
+        provider_name = "Gemini"
+
+        def check_connection(self):
+            return SimpleNamespace(
+                ok=True,
+                message="Gemini 连接正常，模型 gemini-test-model 可用。",
+            )
+
+    message = SimpleNamespace(reply_text=AsyncMock())
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=42),
+        effective_chat=SimpleNamespace(id=42, type="private"),
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data={
+                "tarot_store": TarotSessionStore(),
+                "tarot_admin_ids": frozenset({42}),
+                "tarot_analyzer": FakeAnalyzer(),
+            }
+        )
+    )
+
+    asyncio.run(llmcheck(update, context))
+
+    assert message.reply_text.await_count == 2
+    assert "正在检查 Gemini" in message.reply_text.await_args_list[0].args[0]
+    assert "LLM 检查通过" in message.reply_text.await_args_list[1].args[0]
+
+
+def test_llmcheck_requires_admin_and_openai_configuration() -> None:
+    non_admin_message = SimpleNamespace(reply_text=AsyncMock())
+    non_admin_update = SimpleNamespace(
+        effective_message=non_admin_message,
+        effective_user=SimpleNamespace(id=99),
+        effective_chat=SimpleNamespace(id=-100, type="group"),
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data={
+                "tarot_store": TarotSessionStore(),
+                "tarot_admin_ids": frozenset({42}),
+            }
+        )
+    )
+
+    asyncio.run(llmcheck(non_admin_update, context))
+
+    non_admin_message.reply_text.assert_awaited_once_with(
+        "这项检查只对 Terroir 管理员开放。"
+    )
+
+    admin_message = SimpleNamespace(reply_text=AsyncMock())
+    admin_update = SimpleNamespace(
+        effective_message=admin_message,
+        effective_user=SimpleNamespace(id=42),
+        effective_chat=SimpleNamespace(id=42, type="private"),
+    )
+
+    asyncio.run(llmcheck(admin_update, context))
+
+    admin_message.reply_text.assert_awaited_once_with(
+        "LLM 尚未配置：推荐在 Railway Variables 中设置 GEMINI_API_KEY，"
+        "并设置 LLM_PROVIDER=gemini。"
+    )
+
+
+def test_llmcheck_sends_detailed_results_privately_from_group() -> None:
+    class FakeAnalyzer:
+        provider_name = "Gemini"
+
+        def check_connection(self):
+            return SimpleNamespace(
+                ok=False,
+                message="Gemini API Key 无效，或当前 Google AI 项目没有权限使用配置的模型。",
+            )
+
+    group_message = SimpleNamespace(reply_text=AsyncMock())
+    admin_dm = AsyncMock()
+    update = SimpleNamespace(
+        effective_message=group_message,
+        effective_user=SimpleNamespace(id=42),
+        effective_chat=SimpleNamespace(id=-100, type="group"),
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data={
+                "tarot_store": TarotSessionStore(),
+                "tarot_admin_ids": frozenset({42}),
+                "tarot_analyzer": FakeAnalyzer(),
+            }
+        ),
+        bot=SimpleNamespace(send_message=admin_dm),
+    )
+
+    asyncio.run(llmcheck(update, context))
+
+    group_message.reply_text.assert_awaited_once_with(
+        "LLM 检查结果只会私聊给管理员。"
+    )
+    assert admin_dm.await_count == 2
+    assert all(call.kwargs["chat_id"] == 42 for call in admin_dm.await_args_list)
+    assert "正在检查 Gemini" in admin_dm.await_args_list[0].kwargs["text"]
+    assert "LLM 检查失败" in admin_dm.await_args_list[1].kwargs["text"]
+    assert "没有权限使用配置的模型" in admin_dm.await_args_list[1].kwargs["text"]
+
+
 def test_tarot_start_sends_separate_admin_and_user_interfaces() -> None:
     store = TarotSessionStore()
     message = SimpleNamespace(
@@ -116,7 +232,7 @@ def test_tarot_start_sends_separate_admin_and_user_interfaces() -> None:
             bot_data={
                 "tarot_store": store,
                 "tarot_admin_ids": frozenset({42}),
-                "tarot_analyzer": object(),
+                "tarot_analyzer": SimpleNamespace(provider_name="Gemini"),
             }
         ),
         bot=SimpleNamespace(send_photo=AsyncMock()),
@@ -128,7 +244,7 @@ def test_tarot_start_sends_separate_admin_and_user_interfaces() -> None:
     admin_kwargs = context.bot.send_photo.await_args.kwargs
     assert admin_kwargs["chat_id"] == 42
     assert "Terroir 管理界面" in admin_kwargs["caption"]
-    assert "LLM 分析：已配置" in admin_kwargs["caption"]
+    assert "LLM 分析：Gemini" in admin_kwargs["caption"]
     assert "分析只会送到这里" in admin_kwargs["caption"]
 
     message.reply_photo.assert_awaited_once()

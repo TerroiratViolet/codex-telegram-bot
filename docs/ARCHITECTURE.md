@@ -53,7 +53,7 @@ Bot 先确认能私聊管理员
         ↓
 内存会话状态机（两小时过期，不写日志或数据库）
         ↓
-牌面结构化资料 + A/B/C → OpenAI Responses API（store=False）
+牌面结构化资料 + A/B/C → 已配置的 LLM provider（默认 Gemini）
         ↓
 管理员私聊中的参考分析
         ↓

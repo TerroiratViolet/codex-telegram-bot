@@ -13,6 +13,7 @@ def test_help_lists_core_commands() -> None:
     assert "/ping" in HELP_TEXT
     assert "/about" in HELP_TEXT
     assert "/whoami" in HELP_TEXT
+    assert "/llmcheck" in HELP_TEXT
     assert "/tarot" in HELP_TEXT
 
 
