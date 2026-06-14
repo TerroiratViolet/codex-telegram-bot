@@ -181,6 +181,89 @@ def test_gemini_analyzer_uses_generate_content() -> None:
     assert config["max_output_tokens"] == 3000
 
 
+def test_gemini_health_check_uses_enough_output_tokens() -> None:
+    calls = []
+
+    class FakeTypes:
+        class GenerateContentConfig:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+        class ThinkingConfig:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            return type("Response", (), {"text": "OK"})()
+
+    analyzer = GeminiTarotAnalyzer.__new__(GeminiTarotAnalyzer)
+    analyzer._client = type("Client", (), {"models": FakeModels()})()
+    analyzer._types = FakeTypes
+    analyzer._model = "gemini-test-model"
+    analyzer._fallback_model = ""
+
+    check = analyzer.check_connection()
+
+    assert check.ok
+    config = calls[0]["config"].kwargs
+    assert config["max_output_tokens"] == 200
+    assert config["thinking_config"].kwargs == {"thinking_budget": 64}
+
+
+def test_gemini_analyzer_reads_text_from_candidate_parts() -> None:
+    class FakeTypes:
+        class GenerateContentConfig:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+    class FakePart:
+        text = "候选文本分析"
+
+    class FakeContent:
+        parts = [FakePart()]
+
+    class FakeCandidate:
+        content = FakeContent()
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            return type("Response", (), {"text": "", "candidates": [FakeCandidate()]})()
+
+    analyzer = GeminiTarotAnalyzer.__new__(GeminiTarotAnalyzer)
+    analyzer._client = type("Client", (), {"models": FakeModels()})()
+    analyzer._types = FakeTypes
+    analyzer._model = "gemini-test-model"
+    analyzer._fallback_model = ""
+
+    assert analyzer.analyze(_complete_session()) == "候选文本分析"
+
+
+def test_gemini_empty_response_reports_finish_reason() -> None:
+    class FakeTypes:
+        class GenerateContentConfig:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+    class FakeCandidate:
+        finish_reason = "MAX_TOKENS"
+        content = type("Content", (), {"parts": []})()
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            return type("Response", (), {"text": "", "candidates": [FakeCandidate()]})()
+
+    analyzer = GeminiTarotAnalyzer.__new__(GeminiTarotAnalyzer)
+    analyzer._client = type("Client", (), {"models": FakeModels()})()
+    analyzer._types = FakeTypes
+    analyzer._model = "gemini-test-model"
+    analyzer._fallback_model = ""
+
+    with pytest.raises(TarotAnalysisError, match="MAX_TOKENS"):
+        analyzer.analyze(_complete_session())
+
+
 def test_gemini_analyzer_falls_back_when_primary_model_is_unavailable() -> None:
     calls = []
 
