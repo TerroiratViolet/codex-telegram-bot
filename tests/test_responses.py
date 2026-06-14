@@ -31,8 +31,11 @@ def test_command_with_bot_username_is_supported() -> None:
     assert reply_for_text("/ping@my_test_bot") == "pong：Bot 正常在线。"
 
 
-def test_plain_text_is_echoed() -> None:
-    assert reply_for_text("  今天开会  ") == "你说：今天开会"
+def test_plain_text_is_not_echoed() -> None:
+    reply = reply_for_text("  今天开会  ")
+
+    assert "你说" not in reply
+    assert "/help" in reply
 
 
 def test_unknown_command_has_safe_help() -> None:

@@ -92,7 +92,6 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m pytest
 .\.venv\Scripts\python.exe -m schedule_bot --smoke-test "/start"
-.\.venv\Scripts\python.exe -m schedule_bot --smoke-test "今天开会"
 ```
 
 以后可直接运行：
@@ -106,7 +105,6 @@ python -m venv .venv
 - Ruff 没有错误。
 - Pytest 全部通过。
 - `/start` 输出欢迎语。
-- 普通文字输出 `你说：今天开会`。
 
 ## 5. 创建 Telegram Bot
 
@@ -135,10 +133,9 @@ notepad .env
 ```text
 /start
 /ping
-你好
 ```
 
-预期收到欢迎语、在线确认和 `你说：你好`。按 `Ctrl+C` 停止本地 Bot。
+预期收到欢迎语和在线确认。普通群聊文字不会被 Bot 复述，避免打乱群聊。按 `Ctrl+C` 停止本地 Bot。
 
 ## 6. Git 和 GitHub
 
@@ -223,7 +220,7 @@ Codex Web 可以连接 GitHub 仓库、在云环境执行任务并创建 Pull Re
 请阅读 AGENTS.md 和 README.md。
 为 Telegram Bot 增加 /about 命令。
 回复应包含 Bot 名称和“用于演示 Codex 完整开发流程”。
-保持现有 /start、/help、/ping 和普通文字功能不变。
+保持现有 /start、/help、/ping 功能不变，普通群聊文字不要被复述。
 添加自动测试，运行 AGENTS.md 中的全部验收命令。
 不要修改或索取任何 Token。
 完成后创建 Pull Request，不要直接部署或合并。
