@@ -20,7 +20,12 @@ from telegram.ext import (
 
 from schedule_bot.config import Settings
 from schedule_bot.responses import reply_for_text
-from schedule_bot.tarot_analysis import TarotAnalysisError, TarotAnalyzer
+from schedule_bot.tarot_analysis import (
+    GeminiTarotAnalyzer,
+    OpenAITarotAnalyzer,
+    TarotAnalysisError,
+    TarotAnalysisProvider,
+)
 from schedule_bot.tarot_cards import draw_major_arcana
 from schedule_bot.tarot_sessions import TarotSession, TarotSessionStore, TarotStage
 
@@ -56,7 +61,9 @@ def _mention_html(session: TarotSession) -> str:
     )
 
 
-def _stores(context: ContextTypes.DEFAULT_TYPE) -> tuple[TarotSessionStore, TarotAnalyzer | None]:
+def _stores(
+    context: ContextTypes.DEFAULT_TYPE,
+) -> tuple[TarotSessionStore, TarotAnalysisProvider | None]:
     store = context.application.bot_data["tarot_store"]
     analyzer = context.application.bot_data.get("tarot_analyzer")
     return store, analyzer
@@ -99,7 +106,8 @@ async def whoami(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def llmcheck(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.effective_message
     user = update.effective_user
-    if message is None or user is None:
+    chat = update.effective_chat
+    if message is None or user is None or chat is None:
         return
 
     admin_ids: frozenset[int] = context.application.bot_data["tarot_admin_ids"]
@@ -107,23 +115,44 @@ async def llmcheck(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await message.reply_text("这项检查只对 Terroir 管理员开放。")
         return
 
+    async def send_private_result(text: str) -> bool:
+        if chat.type == ChatType.PRIVATE:
+            await message.reply_text(text)
+            return True
+        try:
+            await context.bot.send_message(chat_id=user.id, text=text)
+        except TelegramError:
+            await message.reply_text(
+                "LLM 检查结果只会私聊给管理员。请先私聊 Bot 发送 /start，"
+                "然后再运行 /llmcheck。"
+            )
+            return False
+        return True
+
+    if chat.type != ChatType.PRIVATE:
+        await message.reply_text("LLM 检查结果只会私聊给管理员。")
+
     _, analyzer = _stores(context)
     if analyzer is None:
-        await message.reply_text(
-            "OpenAI 尚未配置：请在 Railway Variables 中设置 OPENAI_API_KEY。"
+        await send_private_result(
+            "LLM 尚未配置：推荐在 Railway Variables 中设置 GEMINI_API_KEY，"
+            "并设置 LLM_PROVIDER=gemini。"
         )
         return
 
-    await message.reply_text("正在检查 OpenAI 连接与模型权限……")
+    if not await send_private_result(
+        f"正在检查 {analyzer.provider_name} 连接与模型权限……"
+    ):
+        return
     check = await asyncio.to_thread(analyzer.check_connection)
     if check.ok:
-        await message.reply_text(f"LLM 检查通过：{check.message}")
+        await send_private_result(f"LLM 检查通过：{check.message}")
         return
-    await message.reply_text(
+    await send_private_result(
         "LLM 检查失败："
         f"{check.message}\n\n"
-        "请检查 Railway Variables 中的 OPENAI_API_KEY、OPENAI_MODEL、"
-        "OPENAI_FALLBACK_MODEL、OpenAI 项目余额和模型权限。"
+        "请检查 Railway Variables 中的 LLM_PROVIDER、GEMINI_API_KEY、"
+        "GEMINI_MODEL、Gemini 免费额度和模型权限。"
     )
 
 
@@ -168,7 +197,7 @@ async def tarot_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"准备向 {target.full_name} 发出邀请。\n"
         f"群组 ID：{chat.id}\n"
         f"会话：{session.session_id}\n"
-        f"LLM 分析：{'已配置' if analyzer else '尚未配置 OPENAI_API_KEY'}\n\n"
+        f"LLM 分析：{analyzer.provider_name if analyzer else '尚未配置'}\n\n"
         "用户完成 A、B、C 后，分析只会送到这里。"
     )
     try:
@@ -395,7 +424,8 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await context.bot.send_message(
             chat_id=session.admin_user_id,
             text=(
-                "塔罗会话已完成，但 OPENAI_API_KEY 尚未配置，因此没有生成 LLM 分析。\n"
+                "塔罗会话已完成，但 LLM 尚未配置，因此没有生成分析。\n"
+                "推荐在 Railway Variables 中设置 GEMINI_API_KEY 和 LLM_PROVIDER=gemini。\n"
                 f"会话：{session.session_id}"
             ),
         )
@@ -426,7 +456,7 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await context.bot.send_message(
             chat_id=session.admin_user_id,
             text=(
-                "LLM 分析暂时失败。用户回答没有被公开，请稍后重新发起或检查 OpenAI 配置。\n"
+                "LLM 分析暂时失败。用户回答没有被公开，请稍后重新发起或检查 LLM 配置。\n"
                 f"会话：{session.session_id}"
             ),
         )
@@ -475,8 +505,14 @@ def build_application(settings: Settings) -> Application:
     application = Application.builder().token(settings.telegram_bot_token).build()
     application.bot_data["tarot_store"] = TarotSessionStore()
     application.bot_data["tarot_admin_ids"] = settings.telegram_admin_user_ids
-    if settings.openai_api_key:
-        application.bot_data["tarot_analyzer"] = TarotAnalyzer(
+    if settings.llm_provider == "gemini" and settings.gemini_api_key:
+        application.bot_data["tarot_analyzer"] = GeminiTarotAnalyzer(
+            api_key=settings.gemini_api_key,
+            model=settings.gemini_model,
+            fallback_model=settings.gemini_fallback_model,
+        )
+    elif settings.llm_provider == "openai" and settings.openai_api_key:
+        application.bot_data["tarot_analyzer"] = OpenAITarotAnalyzer(
             api_key=settings.openai_api_key,
             model=settings.openai_model,
             fallback_model=settings.openai_fallback_model,

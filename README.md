@@ -270,7 +270,7 @@ Codex Web 可以连接 GitHub 仓库、在云环境执行任务并创建 Pull Re
    - 问题 C：用户如何理解牌面，以及它与问题 A 的关系。
 5. 从 22 张 Rider–Waite–Smith 大阿尔卡那中随机抽取一张，在群组中显示并
    `@` 用户。
-6. 把问题 A、回答 B/C 和该牌的结构化象征资料发送给 OpenAI Responses API。
+6. 把问题 A、回答 B/C 和该牌的结构化象征资料发送给已配置的 LLM provider。
 7. 仅在管理员与 Bot 的私聊中发送分析。群组用户不会看到 LLM 的心理解释。
 
 Bot 把牌当作“投射性反思的镜面”，不把牌义当预言，也不把 LLM 输出当心理诊断。
@@ -305,20 +305,20 @@ TELEGRAM_ADMIN_USER_IDS=123456789
 TELEGRAM_ADMIN_USER_IDS=123456789,987654321
 ```
 
-### 11.4 配置 OpenAI
+### 11.4 配置 Gemini
 
-ChatGPT 登录和 OpenAI API 是两套独立的使用入口。这个 Bot 需要 OpenAI API Key，
-API 调用可能产生费用。
+推荐使用 Gemini API 作为塔罗分析模型。Gemini API Key 和 ChatGPT/OpenAI API Key
+不是同一套东西；不要把 Gemini Key 发给 Codex，也不要提交进 GitHub。
 
-1. 打开 [OpenAI API Keys](https://platform.openai.com/api-keys)。
-2. 创建仅供这个 Bot 使用的 Key。
-3. 不要把 Key 发给 Codex，也不要提交进 GitHub。
-4. 在本地 `.env` 或 Railway Variables 增加：
+1. 打开 [Google AI Studio API Keys](https://aistudio.google.com/apikey)。
+2. 创建仅供这个 Bot 使用的 Gemini API Key。
+3. 在本地 `.env` 或 Railway Variables 增加：
 
 ```text
-OPENAI_API_KEY=你的真实Key
-OPENAI_MODEL=gpt-5.5
-OPENAI_FALLBACK_MODEL=gpt-5.4-mini
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=你的真实GeminiKey
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_FALLBACK_MODEL=
 ```
 
 生产环境最终需要以下变量：
@@ -326,17 +326,26 @@ OPENAI_FALLBACK_MODEL=gpt-5.4-mini
 ```text
 TELEGRAM_BOT_TOKEN
 TELEGRAM_ADMIN_USER_IDS
-OPENAI_API_KEY
-OPENAI_MODEL=gpt-5.5
-OPENAI_FALLBACK_MODEL=gpt-5.4-mini
+LLM_PROVIDER=gemini
+GEMINI_API_KEY
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_FALLBACK_MODEL=
 LOG_LEVEL=WARNING
 ```
 
-用户的 A/B/C 回答和牌面象征资料会在用户同意后发送给 OpenAI，代码明确设置
-`store=False`。不要引导用户输入身份证件、地址、密码、详细医疗记录等不必要信息。
+用户的 A/B/C 回答和牌面象征资料会在用户同意后发送给 Gemini。不要引导用户输入
+身份证件、地址、密码、详细医疗记录等不必要信息。
 
-管理员可以私聊 Bot 发送 `/llmcheck`，单独检查 OpenAI API Key、模型权限和备用模型是否可用。
-如果主模型暂时不可用，Bot 会自动尝试 `OPENAI_FALLBACK_MODEL`，避免完整塔罗流程在最后一步失败。
+管理员可以私聊 Bot 发送 `/llmcheck`，单独检查 Gemini API Key、模型权限和免费额度是否可用。
+
+OpenAI 仍作为可选兼容 provider 保留。如果以后要切回 OpenAI，可设置：
+
+```text
+LLM_PROVIDER=openai
+OPENAI_API_KEY=你的真实OpenAIKey
+OPENAI_MODEL=gpt-5.5
+OPENAI_FALLBACK_MODEL=gpt-5.4-mini
+```
 
 ### 11.5 群组使用流程
 

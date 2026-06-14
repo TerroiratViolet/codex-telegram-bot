@@ -6,8 +6,9 @@ from openai import AuthenticationError, NotFoundError
 
 from schedule_bot.tarot_analysis import (
     ADMIN_ANALYSIS_INSTRUCTIONS,
+    GeminiTarotAnalyzer,
+    OpenAITarotAnalyzer,
     TarotAnalysisError,
-    TarotAnalyzer,
     analysis_input_from_session,
     build_analysis_prompt,
 )
@@ -66,7 +67,7 @@ def test_analyzer_disables_response_storage() -> None:
             calls.append(kwargs)
             return type("Response", (), {"output_text": "参考分析"})()
 
-    analyzer = TarotAnalyzer.__new__(TarotAnalyzer)
+    analyzer = OpenAITarotAnalyzer.__new__(OpenAITarotAnalyzer)
     analyzer._client = type("Client", (), {"responses": FakeResponses()})()
     analyzer._model = "test-model"
     analyzer._fallback_model = ""
@@ -79,7 +80,7 @@ def test_analyzer_disables_response_storage() -> None:
     assert calls[0]["max_output_tokens"] == 3000
 
 
-def test_analyzer_falls_back_when_primary_model_is_unavailable() -> None:
+def test_openai_analyzer_falls_back_when_primary_model_is_unavailable() -> None:
     calls = []
 
     class FakeResponses:
@@ -95,7 +96,7 @@ def test_analyzer_falls_back_when_primary_model_is_unavailable() -> None:
                 )
             return type("Response", (), {"output_text": "备用模型分析"})()
 
-    analyzer = TarotAnalyzer.__new__(TarotAnalyzer)
+    analyzer = OpenAITarotAnalyzer.__new__(OpenAITarotAnalyzer)
     analyzer._client = type("Client", (), {"responses": FakeResponses()})()
     analyzer._model = "primary-model"
     analyzer._fallback_model = "fallback-model"
@@ -108,7 +109,7 @@ def test_analyzer_falls_back_when_primary_model_is_unavailable() -> None:
     assert "备用模型分析" in result
 
 
-def test_health_check_reports_safe_authentication_error() -> None:
+def test_openai_health_check_reports_safe_authentication_error() -> None:
     class FakeResponses:
         def create(self, **kwargs):
             request = httpx.Request("POST", "https://api.openai.com/v1/responses")
@@ -119,7 +120,7 @@ def test_health_check_reports_safe_authentication_error() -> None:
                 body=None,
             )
 
-    analyzer = TarotAnalyzer.__new__(TarotAnalyzer)
+    analyzer = OpenAITarotAnalyzer.__new__(OpenAITarotAnalyzer)
     analyzer._client = type("Client", (), {"responses": FakeResponses()})()
     analyzer._model = "primary-model"
     analyzer._fallback_model = "fallback-model"
@@ -142,10 +143,97 @@ def test_unrecoverable_openai_error_uses_safe_message() -> None:
                 body=None,
             )
 
-    analyzer = TarotAnalyzer.__new__(TarotAnalyzer)
+    analyzer = OpenAITarotAnalyzer.__new__(OpenAITarotAnalyzer)
     analyzer._client = type("Client", (), {"responses": FakeResponses()})()
     analyzer._model = "primary-model"
     analyzer._fallback_model = "fallback-model"
 
     with pytest.raises(TarotAnalysisError, match="API Key"):
         analyzer.analyze(_complete_session())
+
+
+def test_gemini_analyzer_uses_generate_content() -> None:
+    calls = []
+
+    class FakeTypes:
+        class GenerateContentConfig:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            return type("Response", (), {"text": "Gemini 参考分析"})()
+
+    analyzer = GeminiTarotAnalyzer.__new__(GeminiTarotAnalyzer)
+    analyzer._client = type("Client", (), {"models": FakeModels()})()
+    analyzer._types = FakeTypes
+    analyzer._model = "gemini-test-model"
+    analyzer._fallback_model = ""
+
+    result = analyzer.analyze(_complete_session())
+
+    assert result == "Gemini 参考分析"
+    assert calls[0]["model"] == "gemini-test-model"
+    assert "我是否应该离开现在的工作" in calls[0]["contents"]
+    config = calls[0]["config"].kwargs
+    assert config["system_instruction"] == ADMIN_ANALYSIS_INSTRUCTIONS
+    assert config["max_output_tokens"] == 3000
+
+
+def test_gemini_analyzer_falls_back_when_primary_model_is_unavailable() -> None:
+    calls = []
+
+    class FakeTypes:
+        class GenerateContentConfig:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+    class GeminiPermissionError(Exception):
+        code = 403
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs["model"] == "primary-gemini":
+                raise GeminiPermissionError("model permission denied")
+            return type("Response", (), {"text": "备用 Gemini 分析"})()
+
+    analyzer = GeminiTarotAnalyzer.__new__(GeminiTarotAnalyzer)
+    analyzer._client = type("Client", (), {"models": FakeModels()})()
+    analyzer._types = FakeTypes
+    analyzer._model = "primary-gemini"
+    analyzer._fallback_model = "fallback-gemini"
+
+    result = analyzer.analyze(_complete_session())
+
+    assert [call["model"] for call in calls] == ["primary-gemini", "fallback-gemini"]
+    assert "主模型 primary-gemini 暂时不可用" in result
+    assert "备用模型 fallback-gemini" in result
+    assert "备用 Gemini 分析" in result
+
+
+def test_gemini_health_check_reports_safe_quota_error() -> None:
+    class FakeTypes:
+        class GenerateContentConfig:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+    class GeminiQuotaError(Exception):
+        code = 429
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            raise GeminiQuotaError("quota exceeded")
+
+    analyzer = GeminiTarotAnalyzer.__new__(GeminiTarotAnalyzer)
+    analyzer._client = type("Client", (), {"models": FakeModels()})()
+    analyzer._types = FakeTypes
+    analyzer._model = "gemini-test-model"
+    analyzer._fallback_model = ""
+
+    check = analyzer.check_connection()
+
+    assert not check.ok
+    assert check.model is None
+    assert "免费额度" in check.message
