@@ -16,6 +16,7 @@ def configure_logging(log_level: str) -> None:
     # HTTP client INFO messages include the Telegram Bot API URL, which contains the token.
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.WARNING)
 
 
 def run() -> None:
@@ -25,5 +26,5 @@ def run() -> None:
     start_health_server(settings.port)
     logging.getLogger(__name__).info("Health endpoint listening on port %s", settings.port)
 
-    application = build_application(settings.telegram_bot_token)
+    application = build_application(settings)
     application.run_polling(drop_pending_updates=True)

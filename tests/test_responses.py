@@ -12,6 +12,8 @@ def test_help_lists_core_commands() -> None:
     assert "/start" in HELP_TEXT
     assert "/ping" in HELP_TEXT
     assert "/about" in HELP_TEXT
+    assert "/whoami" in HELP_TEXT
+    assert "/tarot" in HELP_TEXT
 
 
 def test_about_describes_bot() -> None:

@@ -13,7 +13,9 @@ HELP_TEXT = (
     "/start - 显示欢迎信息\n"
     "/help - 显示帮助\n"
     "/ping - 检查 Bot 是否在线\n"
-    "/about - 了解这个 Bot\n\n"
+    "/about - 了解这个 Bot\n"
+    "/whoami - 查看自己的 Telegram 数字 ID\n"
+    "/tarot - 管理员回复某位用户后发起塔罗投射练习\n\n"
     "你也可以直接发送普通文字。"
 )
 

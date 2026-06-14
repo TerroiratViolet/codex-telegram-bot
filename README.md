@@ -254,3 +254,113 @@ Codex Web 可以连接 GitHub 仓库、在云环境执行任务并创建 Pull Re
 - [ ] 新功能按示例工作。
 
 更详细的架构和故障处理见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)。
+
+## 11. 塔罗投射分析助手
+
+### 11.1 它做什么
+
+管理员 Terroir 在群组中回复某位用户的消息并发送 `/tarot`。Bot 会：
+
+1. 验证发起人是否在管理员数字 ID 白名单中。
+2. 私聊管理员显示紫罗兰酒馆管理界面，确认管理员能够接收最终分析。
+3. 在群组中 `@` 被邀请用户，显示另一张用户界面图片和明确的授权按钮。
+4. 用户点击“我愿意开始”后，依次收集：
+   - 问题 A：用户真正想问的问题。
+   - 问题 B：用户第一眼在随机牌面中看见了什么。
+   - 问题 C：用户如何理解牌面，以及它与问题 A 的关系。
+5. 从 22 张 Rider–Waite–Smith 大阿尔卡那中随机抽取一张，在群组中显示并
+   `@` 用户。
+6. 把问题 A、回答 B/C 和该牌的结构化象征资料发送给 OpenAI Responses API。
+7. 仅在管理员与 Bot 的私聊中发送分析。群组用户不会看到 LLM 的心理解释。
+
+Bot 把牌当作“投射性反思的镜面”，不把牌义当预言，也不把 LLM 输出当心理诊断。
+管理员必须人工阅读、判断和改写后，才决定是否回复用户。
+
+### 11.2 为什么用户必须“回复”Bot
+
+问题 A、B、C 都会弹出 Telegram 的回复输入框。用户应该回复对应的 Bot 消息，
+不要直接在群组中另发一条普通消息。
+
+这样有两个好处：
+
+- Telegram 的群组隐私模式可以保持开启，Bot 不需要读取整个群组的所有聊天。
+- Bot 不会把用户在群组里的其他普通发言误当作塔罗答案。
+
+### 11.3 配置管理员
+
+Telegram 权限必须使用数字 ID，不能只比较容易修改的用户名。
+
+1. 管理员先私聊 Bot，发送 `/start`。
+2. 发送 `/whoami`。
+3. Bot 会回复类似 `123456789` 的数字。
+4. 本地 `.env` 或 Railway Variables 增加：
+
+```text
+TELEGRAM_ADMIN_USER_IDS=123456789
+```
+
+多个管理员使用英文逗号分隔：
+
+```text
+TELEGRAM_ADMIN_USER_IDS=123456789,987654321
+```
+
+### 11.4 配置 OpenAI
+
+ChatGPT 登录和 OpenAI API 是两套独立的使用入口。这个 Bot 需要 OpenAI API Key，
+API 调用可能产生费用。
+
+1. 打开 [OpenAI API Keys](https://platform.openai.com/api-keys)。
+2. 创建仅供这个 Bot 使用的 Key。
+3. 不要把 Key 发给 Codex，也不要提交进 GitHub。
+4. 在本地 `.env` 或 Railway Variables 增加：
+
+```text
+OPENAI_API_KEY=你的真实Key
+OPENAI_MODEL=gpt-5.2
+```
+
+生产环境最终需要以下变量：
+
+```text
+TELEGRAM_BOT_TOKEN
+TELEGRAM_ADMIN_USER_IDS
+OPENAI_API_KEY
+OPENAI_MODEL
+LOG_LEVEL=WARNING
+```
+
+用户的 A/B/C 回答和牌面象征资料会在用户同意后发送给 OpenAI，代码明确设置
+`store=False`。不要引导用户输入身份证件、地址、密码、详细医疗记录等不必要信息。
+
+### 11.5 群组使用流程
+
+1. 把 Bot 加入群组。
+2. 管理员先在私聊中向 Bot 发送 `/start`，保证 Bot 可以回传私密分析。
+3. 在群组中找到要邀请的用户消息。
+4. 回复该消息并发送 `/tarot`。
+5. 被邀请用户本人点击“我愿意开始”或“暂不参加”。
+6. 用户依次回复问题 A、牌面问题 B、问题 C。
+7. 管理员回到与 Bot 的私聊，阅读 LLM 参考分析。
+8. 管理员根据实际关系和上下文自行判断，并手动回复用户。
+
+未经配置的用户发送 `/tarot` 会被拒绝；其他群成员也不能替被邀请者点击授权按钮。
+
+### 11.6 隐私与运行限制
+
+- 塔罗会话只保存在当前进程内存，不写数据库、不写日志。
+- 会话两小时后自动过期。
+- Railway 重新部署或进程重启会清除尚未完成的会话。
+- 当前仍应只运行一个 Railway Replica。
+- LLM 出错时，Bot 只通知管理员，不把错误或内部提示暴露给用户。
+- 若回答出现自伤、伤人、虐待或极端绝望迹象，提示词要求优先建议现实中的紧急服务、
+  危机热线或合格心理健康专业人员，不继续浪漫化塔罗解释。
+
+### 11.7 图片与牌面来源
+
+- 管理员图与用户授权图由项目专门生成，分别位于
+  `schedule_bot/assets/tarot-admin.png` 和 `schedule_bot/assets/tarot-consent.png`。
+- 牌面使用 1909 年 Rider–Waite–Smith 大阿尔卡那图像，通过 Wikimedia Commons
+  公共文件地址显示。
+- 每张牌在 `schedule_bot/tarot_cards.py` 中定义视觉元素、原型、光明面、阴影面和
+  投射观察重点。LLM 必须结合用户自己的 B/C 回答，不能只输出固定牌义。

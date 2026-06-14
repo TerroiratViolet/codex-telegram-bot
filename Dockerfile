@@ -16,4 +16,3 @@ USER appuser
 EXPOSE 8080
 
 CMD ["python", "-m", "schedule_bot"]
-
