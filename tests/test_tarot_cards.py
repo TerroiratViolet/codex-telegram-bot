@@ -6,12 +6,15 @@ from schedule_bot.tarot_cards import MAJOR_ARCANA, draw_major_arcana
 def test_major_arcana_has_22_unique_well_defined_cards() -> None:
     assert len(MAJOR_ARCANA) == 22
     assert {card.number for card in MAJOR_ARCANA} == set(range(22))
-    assert len({card.image_url for card in MAJOR_ARCANA}) == 22
+    assert len({card.image_filename for card in MAJOR_ARCANA}) == 22
 
     for card in MAJOR_ARCANA:
         assert card.name_zh
         assert card.name_en
-        assert card.image_url.startswith("https://upload.wikimedia.org/")
+        assert card.image_filename.startswith("RWS_Tarot_")
+        assert card.image_path.is_file()
+        assert card.image_path.stat().st_size > 10_000
+        assert card.image_path.read_bytes()[:3] == b"\xff\xd8\xff"
         assert len(card.visual_symbols) >= 4
         assert card.archetype
         assert card.light

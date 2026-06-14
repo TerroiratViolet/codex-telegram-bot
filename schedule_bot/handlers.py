@@ -273,18 +273,34 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             "先不要查牌义。这里重要的是你的第一眼。"
         )
         try:
-            prompt_message = await message.reply_photo(
-                photo=card.image_url,
-                caption=caption,
-                parse_mode=ParseMode.HTML,
-                reply_markup=_force_reply("问题 B：你在牌面中看见了什么？"),
+            image = card.image_path.open("rb")
+        except OSError:
+            LOGGER.exception(
+                "Tarot card image is unavailable. card_number=%s",
+                card.number,
             )
+            await message.reply_text(
+                "牌面图片暂时无法读取，请让 Terroir 稍后重新发起这次练习。"
+            )
+            return
+
+        try:
+            with image:
+                prompt_message = await message.reply_photo(
+                    photo=image,
+                    caption=caption,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=_force_reply("问题 B：你在牌面中看见了什么？"),
+                )
         except TelegramError:
-            prompt_message = await message.reply_text(
-                f"{card.image_url}\n\n{caption}",
-                parse_mode=ParseMode.HTML,
-                reply_markup=_force_reply("问题 B：你在牌面中看见了什么？"),
+            LOGGER.exception(
+                "Telegram could not upload a tarot card. card_number=%s",
+                card.number,
             )
+            await message.reply_text(
+                "牌面图片暂时无法发送，请让 Terroir 稍后重新发起这次练习。"
+            )
+            return
         store.save(
             session.with_updates(expected_reply_to_message_id=prompt_message.message_id)
         )
