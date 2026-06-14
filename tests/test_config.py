@@ -47,7 +47,7 @@ def test_optional_tarot_settings_default_safely(monkeypatch: pytest.MonkeyPatch)
 
     assert settings.telegram_admin_user_ids == frozenset()
     assert settings.openai_api_key == ""
-    assert settings.openai_model == "gpt-5.2"
+    assert settings.openai_model == "gpt-5.5"
 
 
 def test_openai_placeholder_is_not_treated_as_a_real_key(
