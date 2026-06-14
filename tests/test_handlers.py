@@ -92,6 +92,101 @@ def test_non_admin_cannot_start_tarot() -> None:
     message.reply_text.assert_awaited_once_with("这项仪式只对 Terroir 管理员开放。")
 
 
+def test_tarot_start_sends_separate_admin_and_user_interfaces() -> None:
+    store = TarotSessionStore()
+    message = SimpleNamespace(
+        reply_to_message=SimpleNamespace(
+            from_user=SimpleNamespace(
+                id=7,
+                full_name="参与者",
+                username="guest",
+                is_bot=False,
+            )
+        ),
+        reply_text=AsyncMock(),
+        reply_photo=AsyncMock(return_value=SimpleNamespace(message_id=12)),
+    )
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=42),
+        effective_chat=SimpleNamespace(id=-100, type="group"),
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data={
+                "tarot_store": store,
+                "tarot_admin_ids": frozenset({42}),
+                "tarot_analyzer": object(),
+            }
+        ),
+        bot=SimpleNamespace(send_photo=AsyncMock()),
+    )
+
+    asyncio.run(tarot_start(update, context))
+
+    context.bot.send_photo.assert_awaited_once()
+    admin_kwargs = context.bot.send_photo.await_args.kwargs
+    assert admin_kwargs["chat_id"] == 42
+    assert "Terroir 管理界面" in admin_kwargs["caption"]
+    assert "LLM 分析：已配置" in admin_kwargs["caption"]
+    assert "分析只会送到这里" in admin_kwargs["caption"]
+
+    message.reply_photo.assert_awaited_once()
+    user_kwargs = message.reply_photo.await_args.kwargs
+    assert "@guest" in user_kwargs["caption"]
+    assert "我愿意开始" in [
+        button.text
+        for row in user_kwargs["reply_markup"].inline_keyboard
+        for button in row
+    ]
+    assert "暂不参加" in [
+        button.text
+        for row in user_kwargs["reply_markup"].inline_keyboard
+        for button in row
+    ]
+    assert "仅私聊发送给管理员" in user_kwargs["caption"]
+    assert store.get_active_for_user(-100, 7) is not None
+
+
+def test_tarot_start_does_not_invite_user_if_admin_private_chat_fails() -> None:
+    store = TarotSessionStore()
+    message = SimpleNamespace(
+        reply_to_message=SimpleNamespace(
+            from_user=SimpleNamespace(
+                id=7,
+                full_name="参与者",
+                username=None,
+                is_bot=False,
+            )
+        ),
+        reply_text=AsyncMock(),
+        reply_photo=AsyncMock(),
+    )
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=42),
+        effective_chat=SimpleNamespace(id=-100, type="group"),
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data={
+                "tarot_store": store,
+                "tarot_admin_ids": frozenset({42}),
+            }
+        ),
+        bot=SimpleNamespace(
+            send_photo=AsyncMock(side_effect=TelegramError("private chat not found"))
+        ),
+    )
+
+    asyncio.run(tarot_start(update, context))
+
+    message.reply_photo.assert_not_awaited()
+    message.reply_text.assert_awaited_once()
+    assert "无法私聊管理员" in message.reply_text.await_args.args[0]
+    assert store.get_active_for_user(-100, 7) is None
+
+
 def test_other_user_cannot_accept_someone_elses_invitation() -> None:
     store = TarotSessionStore()
     session = store.create(
