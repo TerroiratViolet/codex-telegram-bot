@@ -31,17 +31,18 @@ MAX_TAROT_ANSWER_LENGTH = 1500
 TAROT_INTROS = (
     (
         "紫罗兰酒馆的灯火已经为你留出一席。Terroir 不替世界许诺答案，只陪你在未知"
-        "面前停一会儿。光明与阴影总是同行，而古老原型有时会借一幅画，提醒我们正在"
-        "把什么带进眼前的问题。"
+        "面前停一会儿。光明与阴影总是同行，而集体潜意识中的古老原型有时会借一幅画，"
+        "提醒我们正在把什么带进眼前的问题。"
     ),
     (
         "杯中的紫色微光晃了一下，像世界在回答之前先保持沉默。Terroir 会替你守住这段"
-        "谈话的边界；牌不会决定命运，它只是让人性里熟悉的光、影与原型暂时显形。"
+        "谈话的边界；牌不会决定命运，它只是让人性里熟悉的光、影，以及集体潜意识里的"
+        "原型暂时显形。"
     ),
     (
         "欢迎来到紫罗兰酒馆的一次小小夜谈。未知仍旧是未知，但人对爱、失去、自由与"
         "归属的渴望从未真正改变。若你愿意，Terroir 将为你翻开一张牌，把它当作照见"
-        "内心联想的镜面。"
+        "内心联想与集体潜意识原型的镜面。"
     ),
 )
 
@@ -170,17 +171,27 @@ async def tarot_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     )
     intro = random.choice(TAROT_INTROS)
     mention = _mention_html(session)
-    with (ASSET_DIR / "tarot-consent.png").open("rb") as image:
-        await message.reply_photo(
-            photo=image,
-            caption=(
-                f"{mention}\n\n{html.escape(intro)}\n\n"
-                "这是一场自愿的投射性反思，不是预言、心理诊断或治疗。你的回答只会用于"
-                "本次练习；LLM 生成的参考分析仅私聊发送给管理员，由管理员自行判断是否"
-                "以及如何回应。你可以选择不参加。"
-            ),
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML,
+    try:
+        with (ASSET_DIR / "tarot-consent.png").open("rb") as image:
+            await message.reply_photo(
+                photo=image,
+                caption=(
+                    f"{mention}\n\n{html.escape(intro)}\n\n"
+                    "这是一场自愿的投射性反思，不是预言、心理诊断或治疗。你的回答只会"
+                    "用于本次练习；LLM 生成的参考分析仅私聊发送给管理员，由管理员自行"
+                    "判断是否以及如何回应。你可以选择不参加。"
+                ),
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+            )
+    except (OSError, TelegramError):
+        store.save(session.with_updates(stage=TarotStage.DECLINED))
+        LOGGER.exception(
+            "Tarot consent image could not be sent. session_id=%s",
+            session.session_id,
+        )
+        await message.reply_text(
+            "邀请图片暂时无法发送，本次会话已取消。请 Terroir 稍后重新发起。"
         )
 
 
@@ -211,6 +222,7 @@ async def tarot_consent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await query.answer("你的选择已被尊重。")
         await query.edit_message_caption(
             caption="这次邀请已经婉拒。紫罗兰酒馆会尊重每一次“不”。",
+            reply_markup=None,
         )
         return
 
@@ -275,6 +287,7 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         try:
             image = card.image_path.open("rb")
         except OSError:
+            store.save(session.with_updates(stage=TarotStage.COMPLETE))
             LOGGER.exception(
                 "Tarot card image is unavailable. card_number=%s",
                 card.number,
@@ -293,6 +306,7 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     reply_markup=_force_reply("问题 B：你在牌面中看见了什么？"),
                 )
         except TelegramError:
+            store.save(session.with_updates(stage=TarotStage.COMPLETE))
             LOGGER.exception(
                 "Telegram could not upload a tarot card. card_number=%s",
                 card.number,
