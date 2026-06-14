@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -174,7 +175,7 @@ class GeminiTarotAnalyzer:
             model = self._create_with_fallback(
                 instructions="你只需要回复 OK。",
                 input_text="请回复 OK，确认 Gemini API、模型与项目权限可用。",
-                max_output_tokens=20,
+                max_output_tokens=200,
                 return_model=True,
             )
         except TarotAnalysisError as error:
@@ -203,8 +204,9 @@ class GeminiTarotAnalyzer:
                 response = self._client.models.generate_content(
                     model=model,
                     contents=input_text,
-                    config=self._types.GenerateContentConfig(
-                        system_instruction=instructions,
+                    config=_gemini_generate_config(
+                        self._types,
+                        instructions=instructions,
                         max_output_tokens=max_output_tokens,
                     ),
                 )
@@ -214,9 +216,9 @@ class GeminiTarotAnalyzer:
                     continue
                 raise TarotAnalysisError(_safe_gemini_error_message(error)) from error
 
-            text = (getattr(response, "text", "") or "").strip()
+            text = _gemini_response_text(response)
             if not text:
-                raise TarotAnalysisError("Gemini 返回了空回复，请稍后重试。")
+                raise TarotAnalysisError(_empty_gemini_response_message(response))
             if return_model:
                 return model
             if first_error is not None:
@@ -326,6 +328,55 @@ def _can_try_gemini_fallback(error: Exception) -> bool:
         return True
     message = str(error).lower()
     return "model" in message or "permission" in message or "not found" in message
+
+
+def _gemini_generate_config(
+    types: object,
+    *,
+    instructions: str,
+    max_output_tokens: int,
+) -> object:
+    kwargs: dict[str, object] = {
+        "system_instruction": instructions,
+        "max_output_tokens": max_output_tokens,
+    }
+    thinking_config_type = getattr(types, "ThinkingConfig", None)
+    if thinking_config_type is not None:
+        with suppress(TypeError):
+            kwargs["thinking_config"] = thinking_config_type(thinking_budget=64)
+    return types.GenerateContentConfig(**kwargs)
+
+
+def _gemini_response_text(response: object) -> str:
+    direct_text = getattr(response, "text", "") or ""
+    if direct_text.strip():
+        return direct_text.strip()
+
+    parts_text: list[str] = []
+    for candidate in getattr(response, "candidates", []) or []:
+        content = getattr(candidate, "content", None)
+        for part in getattr(content, "parts", []) or []:
+            text = getattr(part, "text", "") or ""
+            if text.strip():
+                parts_text.append(text.strip())
+    return "\n".join(parts_text).strip()
+
+
+def _empty_gemini_response_message(response: object) -> str:
+    finish_reasons = []
+    for candidate in getattr(response, "candidates", []) or []:
+        finish_reason = getattr(candidate, "finish_reason", None)
+        if finish_reason is not None:
+            finish_reasons.append(str(finish_reason))
+    if finish_reasons:
+        return (
+            "Gemini 返回了空回复。"
+            f"finish_reason={', '.join(finish_reasons)}。"
+            "请稍后重试，或把 GEMINI_MODEL 改为当前账号可用的 Flash 模型。"
+        )
+    return (
+        "Gemini 返回了空回复。请稍后重试，或把 GEMINI_MODEL 改为当前账号可用的 Flash 模型。"
+    )
 
 
 def _gemini_error_code(error: Exception) -> int | None:
