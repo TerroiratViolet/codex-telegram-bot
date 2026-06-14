@@ -55,7 +55,7 @@ class Settings:
             telegram_bot_token=token,
             telegram_admin_user_ids=admin_ids,
             openai_api_key=openai_api_key,
-            openai_model=os.getenv("OPENAI_MODEL", "gpt-5.2").strip() or "gpt-5.2",
+            openai_model=os.getenv("OPENAI_MODEL", "gpt-5.5").strip() or "gpt-5.5",
             port=port,
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         )
