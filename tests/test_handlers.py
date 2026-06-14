@@ -3,6 +3,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from telegram.error import TelegramError
+
 from schedule_bot.config import Settings
 from schedule_bot.handlers import (
     TAROT_INTROS,
@@ -10,7 +12,9 @@ from schedule_bot.handlers import (
     build_application,
     tarot_consent,
     tarot_start,
+    tarot_text_router,
 )
+from schedule_bot.tarot_cards import MAJOR_ARCANA
 from schedule_bot.tarot_sessions import TarotSession, TarotSessionStore, TarotStage
 
 
@@ -42,6 +46,7 @@ def test_tarot_intros_include_requested_tone() -> None:
     assert "光" in combined
     assert "阴影" in combined
     assert "原型" in combined
+    assert all("集体潜意识" in introduction for introduction in TAROT_INTROS)
 
 
 def test_tarot_answer_must_reply_to_the_exact_prompt() -> None:
@@ -117,3 +122,52 @@ def test_other_user_cannot_accept_someone_elses_invitation() -> None:
         show_alert=True,
     )
     assert store.get(session.session_id).stage == TarotStage.AWAITING_CONSENT
+
+
+def test_card_upload_failure_ends_session(
+    monkeypatch,
+) -> None:
+    store = TarotSessionStore()
+    session = store.create(
+        group_chat_id=-100,
+        admin_user_id=42,
+        target_user_id=7,
+        target_display_name="参与者",
+        target_username=None,
+    )
+    store.save(
+        session.with_updates(
+            stage=TarotStage.AWAITING_QUESTION_A,
+            expected_reply_to_message_id=55,
+        )
+    )
+    message = SimpleNamespace(
+        message_id=56,
+        text="我该不该离开现在的工作？",
+        reply_to_message=SimpleNamespace(message_id=55),
+        reply_photo=AsyncMock(side_effect=TelegramError("upload failed")),
+        reply_text=AsyncMock(),
+    )
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(id=7),
+        effective_chat=SimpleNamespace(id=-100),
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data={"tarot_store": store, "tarot_analyzer": None}
+        )
+    )
+    monkeypatch.setattr(
+        "schedule_bot.handlers.draw_major_arcana",
+        lambda: MAJOR_ARCANA[0],
+    )
+
+    asyncio.run(tarot_text_router(update, context))
+
+    ended = store.get(session.session_id)
+    assert ended is not None
+    assert ended.stage == TarotStage.COMPLETE
+    message.reply_text.assert_awaited_once_with(
+        "牌面图片暂时无法发送，请让 Terroir 稍后重新发起这次练习。"
+    )
