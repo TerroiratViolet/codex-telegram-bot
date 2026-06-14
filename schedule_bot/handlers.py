@@ -26,12 +26,15 @@ from schedule_bot.tarot_analysis import (
     TarotAnalysisError,
     TarotAnalysisProvider,
 )
-from schedule_bot.tarot_cards import draw_major_arcana
+from schedule_bot.tarot_cards import draw_tarot_card
 from schedule_bot.tarot_sessions import TarotSession, TarotSessionStore, TarotStage
 
 LOGGER = logging.getLogger(__name__)
 ASSET_DIR = Path(__file__).parent / "assets"
 MAX_TAROT_ANSWER_LENGTH = 1500
+TAROT_CONSENT_IMAGES = tuple(
+    ASSET_DIR / f"tarot-consent-{index:02d}.jpg" for index in range(1, 11)
+)
 
 TAROT_INTROS = (
     (
@@ -123,19 +126,19 @@ async def llmcheck(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await context.bot.send_message(chat_id=user.id, text=text)
         except TelegramError:
             await message.reply_text(
-                "LLM 检查结果只会私聊给管理员。请先私聊 Bot 发送 /start，"
+                "占卜助手检查结果只会私聊给管理员。请先私聊 Bot 发送 /start，"
                 "然后再运行 /llmcheck。"
             )
             return False
         return True
 
     if chat.type != ChatType.PRIVATE:
-        await message.reply_text("LLM 检查结果只会私聊给管理员。")
+        await message.reply_text("占卜助手检查结果只会私聊给管理员。")
 
     _, analyzer = _stores(context)
     if analyzer is None:
         await send_private_result(
-            "LLM 尚未配置：推荐在 Railway Variables 中设置 GEMINI_API_KEY，"
+            "占卜助手尚未配置：推荐在 Railway Variables 中设置 GEMINI_API_KEY，"
             "并设置 LLM_PROVIDER=gemini。"
         )
         return
@@ -146,10 +149,10 @@ async def llmcheck(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     check = await asyncio.to_thread(analyzer.check_connection)
     if check.ok:
-        await send_private_result(f"LLM 检查通过：{check.message}")
+        await send_private_result(f"占卜助手检查通过：{check.message}")
         return
     await send_private_result(
-        "LLM 检查失败："
+        "占卜助手检查失败："
         f"{check.message}\n\n"
         "请检查 Railway Variables 中的 LLM_PROVIDER、GEMINI_API_KEY、"
         "GEMINI_MODEL、Gemini 免费额度和模型权限。"
@@ -197,7 +200,7 @@ async def tarot_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         f"准备向 {target.full_name} 发出邀请。\n"
         f"群组 ID：{chat.id}\n"
         f"会话：{session.session_id}\n"
-        f"LLM 分析：{analyzer.provider_name if analyzer else '尚未配置'}\n\n"
+        f"占卜助手：{analyzer.provider_name if analyzer else '尚未配置'}\n\n"
         "用户完成 A、B、C 后，分析只会送到这里。"
     )
     try:
@@ -232,13 +235,13 @@ async def tarot_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     intro = random.choice(TAROT_INTROS)
     mention = _mention_html(session)
     try:
-        with (ASSET_DIR / "tarot-consent.png").open("rb") as image:
+        with random.choice(TAROT_CONSENT_IMAGES).open("rb") as image:
             await message.reply_photo(
                 photo=image,
                 caption=(
                     f"{mention}\n\n{html.escape(intro)}\n\n"
                     "这是一场自愿的投射性反思，不是预言、心理诊断或治疗。你的回答只会"
-                    "用于本次练习；LLM 生成的参考分析仅私聊发送给管理员，由管理员自行"
+                    "用于本次练习；占卜助手整理出的参考分析仅私聊发送给 Terroir，由她自行"
                     "判断是否以及如何回应。你可以选择不参加。"
                 ),
                 reply_markup=keyboard,
@@ -330,7 +333,7 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     mention = _mention_html(session)
     if session.stage == TarotStage.AWAITING_QUESTION_A:
-        card = draw_major_arcana()
+        card = draw_tarot_card()
         session = session.with_updates(
             question_a=text,
             card=card,
@@ -412,8 +415,8 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await message.reply_text(
         (
             f"{mention}，你的三段回答已经收好。\n\n"
-            "牌面不会替你决定命运。Terroir 会在私聊中收到一份仅供参考的投射分析，"
-            "再由他亲自决定如何回应你。"
+            "这张牌不会替你决定命运，它只是把你的联想轻轻放到桌面上。Terroir "
+            "会在私聊中收到一份仅供参考的投射分析，再由她亲自判断如何回应你。"
         ),
         parse_mode=ParseMode.HTML,
     )
@@ -423,7 +426,7 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await context.bot.send_message(
             chat_id=session.admin_user_id,
             text=(
-                "塔罗会话已完成，但 LLM 尚未配置，因此没有生成分析。\n"
+                "塔罗会话已完成，但占卜助手尚未配置，因此没有生成分析。\n"
                 "推荐在 Railway Variables 中设置 GEMINI_API_KEY 和 LLM_PROVIDER=gemini。\n"
                 f"会话：{session.session_id}"
             ),
@@ -442,7 +445,7 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await context.bot.send_message(
             chat_id=session.admin_user_id,
             text=(
-                "LLM 分析暂时失败。用户回答没有被公开。\n"
+                "占卜助手分析暂时失败。用户回答没有被公开。\n"
                 f"安全错误原因：{error.safe_message}\n"
                 "你可以私聊 Bot 发送 /llmcheck 做一次独立检查。\n"
                 f"会话：{session.session_id}"
@@ -455,7 +458,7 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await context.bot.send_message(
             chat_id=session.admin_user_id,
             text=(
-                "LLM 分析暂时失败。用户回答没有被公开，请稍后重新发起或检查 LLM 配置。\n"
+                "占卜助手分析暂时失败。用户回答没有被公开，请稍后重新发起或检查占卜助手配置。\n"
                 f"会话：{session.session_id}"
             ),
         )

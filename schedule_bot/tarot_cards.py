@@ -21,7 +21,9 @@ class TarotCard:
 
     @property
     def display_name(self) -> str:
-        return f"{self.number:02d} · {self.name_zh}（{self.name_en}）"
+        if 0 <= self.number <= 21:
+            return f"{self.number:02d} · {self.name_zh}（{self.name_en}）"
+        return f"{self.name_zh}（{self.name_en}）"
 
     @property
     def image_path(self) -> Path:
@@ -280,6 +282,225 @@ MAJOR_ARCANA: tuple[TarotCard, ...] = (
 )
 
 
+_SUITS = {
+    "Wands": {
+        "name_zh": "权杖",
+        "name_en": "Wands",
+        "domain": "行动、意志、热情、创造力和外在推进",
+        "symbols": ("木杖", "火元素", "行动姿态", "远方目标"),
+        "archetype": "把内在火焰带向世界的行动者",
+        "light": "热情、勇气、主动、开创",
+        "shadow": "急躁、好胜、耗竭、把冲动误认为使命",
+    },
+    "Cups": {
+        "name_zh": "圣杯",
+        "name_en": "Cups",
+        "domain": "情感、关系、依恋、想象和内在滋养",
+        "symbols": ("圣杯", "水元素", "情感流动", "关系场景"),
+        "archetype": "倾听感受并寻找情感容器的人",
+        "light": "共情、温柔、连接、情绪觉察",
+        "shadow": "沉溺、理想化、逃避现实、情绪依附",
+    },
+    "Swords": {
+        "name_zh": "宝剑",
+        "name_en": "Swords",
+        "domain": "思想、语言、判断、冲突和清晰边界",
+        "symbols": ("宝剑", "风元素", "天空", "紧张的姿态"),
+        "archetype": "用意识切开混沌并承担真相的人",
+        "light": "清晰、诚实、辨别、决断",
+        "shadow": "过度分析、攻击、防御、把想法当作全部事实",
+    },
+    "Pentacles": {
+        "name_zh": "星币",
+        "name_en": "Pentacles",
+        "domain": "身体、资源、工作、金钱和现实安全感",
+        "symbols": ("星币", "土元素", "身体姿态", "现实环境"),
+        "archetype": "在现实中种植、照料并收获价值的人",
+        "light": "稳定、耐心、积累、照顾现实",
+        "shadow": "匮乏焦虑、固着、物化自我、害怕改变",
+    },
+}
+
+_RANKS = {
+    1: {
+        "name_zh": "一",
+        "name_en": "Ace",
+        "image_part": "01",
+        "symbols": ("一只伸出的手", "新出现的元素", "尚未展开的潜能"),
+        "archetype": "种子、开端与尚未成形的可能",
+        "light": "新的机会、纯粹动机、开始尝试",
+        "shadow": "只停留在幻想、害怕迈出第一步",
+        "focus": "来访者如何面对一个刚出现的可能性",
+    },
+    2: {
+        "name_zh": "二",
+        "name_en": "Two",
+        "image_part": "02",
+        "symbols": ("两个核心元素", "选择或对照", "需要维持的平衡"),
+        "archetype": "二元关系、选择与初步协调",
+        "light": "合作、平衡、比较后的选择",
+        "shadow": "犹豫、拉扯、把矛盾冻结不动",
+        "focus": "来访者如何在两个方向、两个人或两种需要之间摆动",
+    },
+    3: {
+        "name_zh": "三",
+        "name_en": "Three",
+        "image_part": "03",
+        "symbols": ("三个元素", "扩展的关系", "初步成果"),
+        "archetype": "表达、协作与第一个外化成果",
+        "light": "成长、分享、看见雏形",
+        "shadow": "分心、比较、害怕被评价",
+        "focus": "来访者如何看待成长后的可见性和他人的参与",
+    },
+    4: {
+        "name_zh": "四",
+        "name_en": "Four",
+        "image_part": "04",
+        "symbols": ("四个元素", "边界", "停顿或结构"),
+        "archetype": "稳定、边界与暂时成形的秩序",
+        "light": "安全感、休整、建立结构",
+        "shadow": "停滞、封闭、把稳定变成牢笼",
+        "focus": "来访者如何理解安全、暂停和边界",
+    },
+    5: {
+        "name_zh": "五",
+        "name_en": "Five",
+        "image_part": "05",
+        "symbols": ("不稳定的人物关系", "损失或竞争", "被扰动的秩序"),
+        "archetype": "冲突、匮乏与秩序被打破后的反应",
+        "light": "看见问题、重新调整、从挫折中醒来",
+        "shadow": "受害感、争斗、把暂时困难绝对化",
+        "focus": "来访者如何解释挫败、竞争、失去或不公平",
+    },
+    6: {
+        "name_zh": "六",
+        "name_en": "Six",
+        "image_part": "06",
+        "symbols": ("交换或过渡", "他者在场", "重新流动的秩序"),
+        "archetype": "恢复、互惠与从失衡中重新移动",
+        "light": "修复、支持、过渡、重新分配",
+        "shadow": "依赖、怀旧、权力不对等",
+        "focus": "来访者如何接受帮助、给予帮助或离开旧处境",
+    },
+    7: {
+        "name_zh": "七",
+        "name_en": "Seven",
+        "image_part": "07",
+        "symbols": ("复杂选择", "防守姿态", "多重可能"),
+        "archetype": "考验、辨别与面对诱惑或阻力",
+        "light": "坚持、策略、辨别真实需要",
+        "shadow": "防御过度、迷失、把幻想当选择",
+        "focus": "来访者如何在压力、诱惑或多重选项中保护自己",
+    },
+    8: {
+        "name_zh": "八",
+        "name_en": "Eight",
+        "image_part": "08",
+        "symbols": ("重复排列", "速度或限制", "正在成形的模式"),
+        "archetype": "模式、练习、速度与自我限制",
+        "light": "专注、效率、看见规律、持续练习",
+        "shadow": "被困、机械重复、急于完成",
+        "focus": "来访者如何看待重复、限制、速度和熟练",
+    },
+    9: {
+        "name_zh": "九",
+        "name_en": "Nine",
+        "image_part": "09",
+        "symbols": ("接近完成", "个人姿态", "成果或压力集中"),
+        "archetype": "接近完成时的个人承受与自我确认",
+        "light": "成熟、自足、收获、韧性",
+        "shadow": "孤军奋战、焦虑、害怕失去成果",
+        "focus": "来访者如何体验接近完成时的满足、压力或孤独",
+    },
+    10: {
+        "name_zh": "十",
+        "name_en": "Ten",
+        "image_part": "10",
+        "symbols": ("完整排列", "家庭或负担", "周期抵达终点"),
+        "archetype": "完成、累积后果与进入下一轮之前的重量",
+        "light": "完成、传承、承担、整体图景",
+        "shadow": "过载、僵化、被责任压住",
+        "focus": "来访者如何面对结果、责任、家族或长期后果",
+    },
+    11: {
+        "name_zh": "侍从",
+        "name_en": "Page",
+        "image_part": "11_Page",
+        "symbols": ("年轻信使", "手持元素", "好奇观察"),
+        "archetype": "学习者、信使与第一次认真凝视某种能量",
+        "light": "好奇、学习、敏感、愿意探索",
+        "shadow": "幼稚、试探、只收集信号不行动",
+        "focus": "来访者如何以新手姿态面对这个议题",
+    },
+    12: {
+        "name_zh": "骑士",
+        "name_en": "Knight",
+        "image_part": "12_Knight",
+        "symbols": ("骑士", "马", "朝某处移动的能量"),
+        "archetype": "执行者、追寻者与带着欲望前进的人",
+        "light": "行动、追求、投入、把感受化为方向",
+        "shadow": "冲动、单线推进、忽略他人的节奏",
+        "focus": "来访者如何推进、追逐或逃离这个议题",
+    },
+    13: {
+        "name_zh": "王后",
+        "name_en": "Queen",
+        "image_part": "13_Queen",
+        "symbols": ("王后", "王座", "成熟的内在容器"),
+        "archetype": "内在容器、滋养者与成熟的接纳能力",
+        "light": "接纳、滋养、洞察、内在稳定",
+        "shadow": "过度包容、情绪控制、以照顾换取安全",
+        "focus": "来访者如何容纳、照料或控制这个议题",
+    },
+    14: {
+        "name_zh": "国王",
+        "name_en": "King",
+        "image_part": "14_King",
+        "symbols": ("国王", "王座", "外在秩序和掌控"),
+        "archetype": "掌权者、整合者与把能量带入秩序的人",
+        "light": "成熟掌控、承担、保护、清晰领导",
+        "shadow": "控制、僵硬、权威焦虑、拒绝脆弱",
+        "focus": "来访者如何掌控、定义或承担这个议题",
+    },
+}
+
+
+def _minor_arcana() -> tuple[TarotCard, ...]:
+    cards: list[TarotCard] = []
+    for suit_index, suit_key in enumerate(("Wands", "Cups", "Swords", "Pentacles"), start=1):
+        suit = _SUITS[suit_key]
+        for rank_number, rank in _RANKS.items():
+            name_zh = f"{suit['name_zh']}{rank['name_zh']}"
+            name_en = (
+                f"{rank['name_en']} of {suit['name_en']}"
+                if rank_number <= 10
+                else f"{rank['name_en']} of {suit['name_en']}"
+            )
+            cards.append(
+                TarotCard(
+                    100 * suit_index + rank_number,
+                    name_zh,
+                    name_en,
+                    f"{suit_key}{rank['image_part']}.jpg",
+                    tuple(suit["symbols"]) + tuple(rank["symbols"]),
+                    f"{rank['archetype']}，发生在{suit['domain']}之中；{suit['archetype']}。",
+                    f"{rank['light']}；{suit['light']}。",
+                    f"{rank['shadow']}；{suit['shadow']}。",
+                    f"{rank['focus']}；尤其观察来访者如何投射{suit['domain']}。",
+                )
+            )
+    return tuple(cards)
+
+
+MINOR_ARCANA: tuple[TarotCard, ...] = _minor_arcana()
+TAROT_DECK: tuple[TarotCard, ...] = MAJOR_ARCANA + MINOR_ARCANA
+
+
 def draw_major_arcana(random: Random | None = None) -> TarotCard:
     chooser = random or Random()
     return chooser.choice(MAJOR_ARCANA)
+
+
+def draw_tarot_card(random: Random | None = None) -> TarotCard:
+    chooser = random or Random()
+    return chooser.choice(TAROT_DECK)
