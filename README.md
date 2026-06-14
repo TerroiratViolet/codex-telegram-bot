@@ -360,7 +360,9 @@ LOG_LEVEL=WARNING
 
 - 管理员图与用户授权图由项目专门生成，分别位于
   `schedule_bot/assets/tarot-admin.png` 和 `schedule_bot/assets/tarot-consent.png`。
-- 牌面使用 1909 年 Rider–Waite–Smith 大阿尔卡那图像，通过 Wikimedia Commons
-  公共文件地址显示。
+- 牌面使用 1909 年 Rider–Waite–Smith 大阿尔卡那图像，22 张图片已随项目打包，
+  不依赖运行时外部图片链接。
 - 每张牌在 `schedule_bot/tarot_cards.py` 中定义视觉元素、原型、光明面、阴影面和
   投射观察重点。LLM 必须结合用户自己的 B/C 回答，不能只输出固定牌义。
+- 原画由 Pamela Colman Smith 创作，最初于 1909 年出版。原始版本已进入公共领域；
+  项目中的文件来源与固定提交记录见 `schedule_bot/assets/cards/README.md`。

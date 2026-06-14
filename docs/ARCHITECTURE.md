@@ -82,7 +82,7 @@ Bot 先确认能私聊管理员
 `tarot_cards.py` 定义 22 张大阿尔卡那。每张牌包含：
 
 - 中文名和英文名
-- Wikimedia Commons 牌面 URL
+- 随 Docker 镜像发布的本地牌面文件
 - 可观察的画面元素
 - 原型主题
 - 光明面与阴影面
