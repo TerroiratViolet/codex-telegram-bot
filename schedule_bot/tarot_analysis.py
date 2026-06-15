@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Protocol
@@ -53,6 +54,8 @@ ADMIN_ANALYSIS_INSTRUCTIONS = """
 塔罗解释；在最前面加入“安全优先”提醒，建议管理员鼓励参与者联系当地紧急服务、危机
 热线或合格心理健康专业人员。
 """.strip()
+
+TRANSIENT_RETRY_DELAYS_SECONDS = (1.0, 3.0, 8.0)
 
 
 @dataclass(frozen=True)
@@ -154,6 +157,8 @@ class GeminiTarotAnalyzer:
         self._types = types
         self._model = model
         self._fallback_model = fallback_model
+        self._retry_delays = TRANSIENT_RETRY_DELAYS_SECONDS
+        self._sleep = time.sleep
 
     @property
     def models(self) -> tuple[str, ...]:
@@ -201,14 +206,11 @@ class GeminiTarotAnalyzer:
         first_error: Exception | None = None
         for index, model in enumerate(self.models):
             try:
-                response = self._client.models.generate_content(
+                response = self._generate_content_with_retries(
                     model=model,
-                    contents=input_text,
-                    config=_gemini_generate_config(
-                        self._types,
-                        instructions=instructions,
-                        max_output_tokens=max_output_tokens,
-                    ),
+                    input_text=input_text,
+                    instructions=instructions,
+                    max_output_tokens=max_output_tokens,
                 )
             except Exception as error:
                 if index == 0 and _can_try_gemini_fallback(error) and len(self.models) > 1:
@@ -230,6 +232,36 @@ class GeminiTarotAnalyzer:
 
         raise TarotAnalysisError("Gemini 分析暂时失败，请稍后重试。")
 
+    def _generate_content_with_retries(
+        self,
+        *,
+        model: str,
+        input_text: str,
+        instructions: str,
+        max_output_tokens: int,
+    ) -> object:
+        retry_delays = getattr(self, "_retry_delays", ())
+        sleep = getattr(self, "_sleep", time.sleep)
+        for attempt in range(len(retry_delays) + 1):
+            try:
+                return self._client.models.generate_content(
+                    model=model,
+                    contents=input_text,
+                    config=_gemini_generate_config(
+                        self._types,
+                        instructions=instructions,
+                        max_output_tokens=max_output_tokens,
+                    ),
+                )
+            except Exception as error:
+                if attempt >= len(retry_delays) or not _is_transient_gemini_error(
+                    error
+                ):
+                    raise
+                sleep(retry_delays[attempt])
+
+        raise RuntimeError("unreachable")
+
 
 class OpenAITarotAnalyzer:
     provider_name = "OpenAI"
@@ -244,6 +276,8 @@ class OpenAITarotAnalyzer:
         self._client = OpenAI(api_key=api_key, timeout=60)
         self._model = model
         self._fallback_model = fallback_model
+        self._retry_delays = TRANSIENT_RETRY_DELAYS_SECONDS
+        self._sleep = time.sleep
 
     @property
     def models(self) -> tuple[str, ...]:
@@ -291,12 +325,11 @@ class OpenAITarotAnalyzer:
         first_error: OpenAIError | Exception | None = None
         for index, model in enumerate(self.models):
             try:
-                response = self._client.responses.create(
+                response = self._create_response_with_retries(
                     model=model,
                     instructions=instructions,
-                    input=input_text,
+                    input_text=input_text,
                     max_output_tokens=max_output_tokens,
-                    store=False,
                 )
             except OpenAIError as error:
                 if index == 0 and _can_try_fallback(error) and len(self.models) > 1:
@@ -318,6 +351,34 @@ class OpenAITarotAnalyzer:
 
         raise TarotAnalysisError("OpenAI 分析暂时失败，请稍后重试。")
 
+    def _create_response_with_retries(
+        self,
+        *,
+        model: str,
+        instructions: str,
+        input_text: str,
+        max_output_tokens: int,
+    ) -> object:
+        retry_delays = getattr(self, "_retry_delays", ())
+        sleep = getattr(self, "_sleep", time.sleep)
+        for attempt in range(len(retry_delays) + 1):
+            try:
+                return self._client.responses.create(
+                    model=model,
+                    instructions=instructions,
+                    input=input_text,
+                    max_output_tokens=max_output_tokens,
+                    store=False,
+                )
+            except OpenAIError as error:
+                if attempt >= len(retry_delays) or not _is_transient_openai_error(
+                    error
+                ):
+                    raise
+                sleep(retry_delays[attempt])
+
+        raise RuntimeError("unreachable")
+
 
 TarotAnalyzer = OpenAITarotAnalyzer
 
@@ -328,6 +389,19 @@ def _can_try_gemini_fallback(error: Exception) -> bool:
         return True
     message = str(error).lower()
     return "model" in message or "permission" in message or "not found" in message
+
+
+def _is_transient_gemini_error(error: Exception) -> bool:
+    code = _gemini_error_code(error)
+    if code in {408, 500, 502, 503, 504}:
+        return True
+    message = str(error).lower()
+    return (
+        "timeout" in message
+        or "temporarily unavailable" in message
+        or "service unavailable" in message
+        or "try again" in message
+    )
 
 
 def _gemini_generate_config(
@@ -419,6 +493,14 @@ def _can_try_fallback(error: OpenAIError) -> bool:
     if isinstance(error, BadRequestError):
         message = str(error).lower()
         return "model" in message
+    return False
+
+
+def _is_transient_openai_error(error: OpenAIError) -> bool:
+    if isinstance(error, (APIConnectionError, APITimeoutError)):
+        return True
+    if isinstance(error, APIStatusError):
+        return error.status_code in {408, 500, 502, 503, 504}
     return False
 
 
