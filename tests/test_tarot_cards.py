@@ -67,3 +67,15 @@ def test_tarot_role_and_invitation_images_are_packaged() -> None:
     for image in invitation_images:
         assert image.stat().st_size > 100_000
         assert image.read_bytes()[:3] == b"\xff\xd8\xff"
+
+
+def test_invitation_image_generation_rules_reject_black_hands() -> None:
+    architecture_doc = (
+        Path(__file__).parents[1] / "docs" / "ARCHITECTURE.md"
+    ).read_text(encoding="utf-8")
+
+    assert "邀请图生成规则" in architecture_doc
+    assert "自然肤色" in architecture_doc
+    assert "黑色的手" in architecture_doc
+    assert "黑色手套" in architecture_doc
+    assert "必须重新生成后再次确认" in architecture_doc
