@@ -274,6 +274,8 @@ def test_tarot_start_sends_separate_admin_and_user_interfaces() -> None:
     user_kwargs = message.reply_photo.await_args.kwargs
     assert Path(user_kwargs["photo"].name) in TAROT_CONSENT_IMAGES
     assert "@guest" in user_kwargs["caption"]
+    assert "牌面是镜子，不是答案" in user_kwargs["caption"]
+    assert "你的描述会比标准牌义更重要" in user_kwargs["caption"]
     assert "我愿意开始" in [
         button.text
         for row in user_kwargs["reply_markup"].inline_keyboard
@@ -357,6 +359,46 @@ def test_other_user_cannot_accept_someone_elses_invitation() -> None:
         show_alert=True,
     )
     assert store.get(session.session_id).stage == TarotStage.AWAITING_CONSENT
+
+
+def test_tarot_consent_prompts_reflective_situation_question() -> None:
+    store = TarotSessionStore()
+    session = store.create(
+        group_chat_id=-100,
+        admin_user_id=42,
+        target_user_id=7,
+        target_display_name="参与者",
+        target_username="guest",
+    )
+    query = SimpleNamespace(
+        data=f"tarot:yes:{session.session_id}",
+        answer=AsyncMock(),
+        edit_message_reply_markup=AsyncMock(),
+        message=SimpleNamespace(
+            reply_text=AsyncMock(return_value=SimpleNamespace(message_id=88))
+        ),
+    )
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=7),
+    )
+    context = SimpleNamespace(
+        application=SimpleNamespace(
+            bot_data={"tarot_store": store, "tarot_analyzer": None}
+        )
+    )
+
+    asyncio.run(tarot_consent(update, context))
+
+    query.answer.assert_awaited_once_with("占卜练习开始。")
+    prompt = query.message.reply_text.await_args.args[0]
+    assert "想通过这次占卜理解的处境" in prompt
+    assert "最困惑、最在意、最想看清" in prompt
+    assert "会不会" not in prompt
+    saved = store.get(session.session_id)
+    assert saved is not None
+    assert saved.stage == TarotStage.AWAITING_QUESTION_A
+    assert saved.expected_reply_to_message_id == 88
 
 
 def test_card_upload_failure_ends_session(
@@ -500,6 +542,8 @@ def test_complete_tarot_analysis_is_sent_only_to_admin(
     answer_b_message.reply_text.assert_awaited_once()
     answer_c_message.reply_text.assert_awaited_once()
     assert "私密参考分析" not in answer_c_message.reply_text.await_args.args[0]
+    assert "联想和故事" in answer_c_message.reply_text.await_args.args[0]
+    assert "最重要的材料" in answer_c_message.reply_text.await_args.args[0]
 
     assert admin_send.await_count == 2
     assert all(call.kwargs["chat_id"] == 42 for call in admin_send.await_args_list)
