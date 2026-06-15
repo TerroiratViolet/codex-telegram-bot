@@ -250,7 +250,11 @@ Codex Web 可以连接 GitHub 仓库、在云环境执行任务并创建 Pull Re
 - [ ] Telegram 中 `/ping` 成功。
 - [ ] 新功能按示例工作。
 
-更详细的架构和故障处理见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)。
+更详细的架构、故障处理和新模块开发模板见：
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)
+- [docs/MODULE_DEVELOPMENT_PLAYBOOK.md](docs/MODULE_DEVELOPMENT_PLAYBOOK.md)
 
 ## 11. 塔罗投射分析助手
 
