@@ -43,6 +43,15 @@ def test_analysis_prompt_contains_answers_and_defined_card_meaning() -> None:
     assert MAJOR_ARCANA[0].shadow in prompt
 
 
+def test_analysis_prompt_prioritizes_user_description_over_card_meaning() -> None:
+    prompt = build_analysis_prompt(analysis_input_from_session(_complete_session()))
+
+    assert prompt.index("【参与者的回答】") < prompt.index("【牌面资料】")
+    assert "参与者自己的 A/B/C 描述为先" in prompt
+    assert "以参与者描述为主" in prompt
+    assert "牌面资料只作为辅助镜面" in prompt
+
+
 def test_analysis_instructions_are_admin_only_and_non_diagnostic() -> None:
     assert "只提供给管理员" in ADMIN_ANALYSIS_INSTRUCTIONS
     assert "不是临床诊断" in ADMIN_ANALYSIS_INSTRUCTIONS
@@ -50,6 +59,17 @@ def test_analysis_instructions_are_admin_only_and_non_diagnostic() -> None:
     assert "敏感属性" in ADMIN_ANALYSIS_INSTRUCTIONS
     assert "问题 A" in ADMIN_ANALYSIS_INSTRUCTIONS
     assert "安全优先" in ADMIN_ANALYSIS_INSTRUCTIONS
+    assert "目标不是预测未来" in ADMIN_ANALYSIS_INSTRUCTIONS
+    assert "牌面是镜子，不是答案" in ADMIN_ANALYSIS_INSTRUCTIONS
+    assert "参与者的描述优先于标准牌义" in ADMIN_ANALYSIS_INSTRUCTIONS
+
+
+def test_analysis_prompt_rejects_fatalistic_prediction() -> None:
+    prompt = build_analysis_prompt(analysis_input_from_session(_complete_session()))
+
+    assert "不要预测未来" in prompt
+    assert "不要把牌义说成宿命答案" in prompt
+    assert "理解、探索与重构叙事" in prompt
 
 
 def test_incomplete_session_cannot_be_analyzed() -> None:

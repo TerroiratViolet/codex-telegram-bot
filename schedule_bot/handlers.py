@@ -239,10 +239,11 @@ async def tarot_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await message.reply_photo(
                 photo=image,
                 caption=(
-                    f"{mention}\n\n{html.escape(intro)}\n\n"
-                    "这是一场自愿的投射性反思，不是预言、心理诊断或治疗。你的回答只会"
-                    "用于本次练习；占卜助手整理出的参考分析仅私聊发送给 Terroir，由她自行"
-                    "判断是否以及如何回应。你可以选择不参加。"
+                f"{mention}\n\n{html.escape(intro)}\n\n"
+                    "这是一场自愿的占卜式投射练习，不是预言、心理诊断或治疗。牌面是"
+                    "镜子，不是答案；你的描述会比标准牌义更重要。你的回答只会用于本次"
+                    "练习；占卜助手整理出的参考分析仅私聊发送给 Terroir，由她自行判断"
+                    "是否以及如何回应。你可以选择不参加。"
                 ),
                 reply_markup=keyboard,
                 parse_mode=ParseMode.HTML,
@@ -296,11 +297,12 @@ async def tarot_consent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         prompt_message = await query.message.reply_text(
             (
                 f"{_mention_html(session)}\n\n"
-                "问题 A：请回复这条消息，写下你此刻真正想问的问题。\n"
+                "问题 A：请回复这条消息，写下你想通过这次占卜理解的处境。\n"
+                "你在这件事里最困惑、最在意、最想看清的是什么？\n"
                 "请不要写身份证件、住址、密码、医疗记录等敏感个人信息。"
             ),
             parse_mode=ParseMode.HTML,
-            reply_markup=_force_reply("问题 A：你真正想问什么？"),
+            reply_markup=_force_reply("问题 A：你想看清什么处境？"),
         )
         store.save(
             session.with_updates(expected_reply_to_message_id=prompt_message.message_id)
@@ -415,6 +417,7 @@ async def tarot_text_router(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await message.reply_text(
         (
             f"{mention}，你的三段回答已经收好。\n\n"
+            "刚才你给出的画面、联想和故事，本身就是这次占卜最重要的材料。"
             "这张牌不会替你决定命运，它只是把你的联想轻轻放到桌面上。Terroir "
             "会在私聊中收到一份仅供参考的投射分析，再由她亲自判断如何回应你。"
         ),
