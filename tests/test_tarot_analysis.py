@@ -181,6 +181,75 @@ def test_gemini_analyzer_uses_generate_content() -> None:
     assert config["max_output_tokens"] == 3000
 
 
+def test_gemini_analyzer_retries_transient_503_before_failing_session() -> None:
+    calls = []
+    sleeps = []
+
+    class FakeTypes:
+        class GenerateContentConfig:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+    class GeminiServiceUnavailable(Exception):
+        code = 503
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                raise GeminiServiceUnavailable("service unavailable")
+            return type("Response", (), {"text": "重试后生成的 Gemini 分析"})()
+
+    analyzer = GeminiTarotAnalyzer.__new__(GeminiTarotAnalyzer)
+    analyzer._client = type("Client", (), {"models": FakeModels()})()
+    analyzer._types = FakeTypes
+    analyzer._model = "gemini-test-model"
+    analyzer._fallback_model = ""
+    analyzer._retry_delays = (0.1, 0.2)
+    analyzer._sleep = sleeps.append
+
+    result = analyzer.analyze(_complete_session())
+
+    assert result == "重试后生成的 Gemini 分析"
+    assert [call["model"] for call in calls] == [
+        "gemini-test-model",
+        "gemini-test-model",
+    ]
+    assert sleeps == [0.1]
+
+
+def test_gemini_analyzer_reports_safe_message_after_retry_exhaustion() -> None:
+    calls = []
+    sleeps = []
+
+    class FakeTypes:
+        class GenerateContentConfig:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+    class GeminiServiceUnavailable(Exception):
+        code = 503
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            calls.append(kwargs)
+            raise GeminiServiceUnavailable("service unavailable")
+
+    analyzer = GeminiTarotAnalyzer.__new__(GeminiTarotAnalyzer)
+    analyzer._client = type("Client", (), {"models": FakeModels()})()
+    analyzer._types = FakeTypes
+    analyzer._model = "gemini-test-model"
+    analyzer._fallback_model = ""
+    analyzer._retry_delays = (0.1, 0.2)
+    analyzer._sleep = sleeps.append
+
+    with pytest.raises(TarotAnalysisError, match="503"):
+        analyzer.analyze(_complete_session())
+
+    assert len(calls) == 3
+    assert sleeps == [0.1, 0.2]
+
+
 def test_gemini_health_check_uses_enough_output_tokens() -> None:
     calls = []
 
