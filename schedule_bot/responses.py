@@ -30,7 +30,7 @@ def reply_for_text(text: str, first_name: str = "朋友") -> str | None:
     if command == "/about":
         return ABOUT_TEXT
     if command.startswith("/"):
-        return "我还不认识这个命令。发送 /start 查看可用命令。"
+        return None
     if not normalized:
         return "请发送文字，或发送 /start 查看可用命令。"
 

@@ -38,6 +38,8 @@ def test_module_development_playbook_captures_repeatable_workflow() -> None:
 
     assert "不要直接部署" in playbook
     assert "Railway Variables" in playbook
+    assert "MessageHandler(filters.COMMAND" in playbook
+    assert "未知斜杠命令应静默忽略" in playbook
     assert ".\\.venv\\Scripts\\python.exe -m pytest" in playbook
 
 
@@ -47,3 +49,5 @@ def test_agents_requires_playbook_for_new_feature_modules() -> None:
     assert "docs/MODULE_DEVELOPMENT_PLAYBOOK.md" in agents
     assert "new feature module" in agents
     assert "prompt the user to fill or confirm each required field" in agents
+    assert "Do not add catch-all slash command handlers" in agents
+    assert "replying to the bot" in agents

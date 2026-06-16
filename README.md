@@ -136,7 +136,8 @@ notepad .env
 ```
 
 预期收到欢迎语、可用命令列表和在线确认。普通群聊文字不会被 Bot 复述，避免打乱群聊。
-Bot 不使用 `/help`，避免和群里其他 Bot 的常见帮助命令冲突。按 `Ctrl+C` 停止本地 Bot。
+Bot 不使用 `/help`，也不会读取或回复群里所有带 `/` 的消息。普通命令在私聊中可直接使用；
+在群组中通常需要回复 Bot 的消息再发送，避免和其他服务的命令冲突。按 `Ctrl+C` 停止本地 Bot。
 
 ## 6. Git 和 GitHub
 
@@ -221,7 +222,8 @@ Codex Web 可以连接 GitHub 仓库、在云环境执行任务并创建 Pull Re
 请阅读 AGENTS.md 和 README.md。
 为 Telegram Bot 增加 /about 命令。
 回复应包含 Bot 名称和“用于演示 Codex 完整开发流程”。
-保持现有 /start、/ping 功能不变，不要新增 /help，普通群聊文字不要被复述。
+保持现有 /start、/ping 功能不变，不要新增 /help，不要新增群组斜杠命令兜底，
+普通群聊文字不要被复述。
 添加自动测试，运行 AGENTS.md 中的全部验收命令。
 不要修改或索取任何 Token。
 完成后创建 Pull Request，不要直接部署或合并。

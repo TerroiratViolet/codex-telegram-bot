@@ -32,3 +32,5 @@ This repository is a small Python Telegram bot maintained by a beginner.
 - Do not add a database until a requested feature needs persistent data.
 - Keep one production replica while the bot uses long polling.
 - Preserve `/start`, `/ping`, and plain-text echo behavior unless the task explicitly changes them.
+- Do not add catch-all slash command handlers. In group chats, regular slash commands should require
+  replying to the bot unless a feature explicitly defines a narrower exception.

@@ -86,10 +86,40 @@ def _is_expected_reply(update: Update, session: TarotSession) -> bool:
     )
 
 
+def _is_reply_to_this_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    message = update.effective_message
+    replied_to = getattr(message, "reply_to_message", None) if message else None
+    replied_user = replied_to.from_user if replied_to else None
+    if replied_user is None:
+        return False
+
+    bot = getattr(context, "bot", None)
+    if bot is None:
+        return False
+    bot_id = getattr(bot, "id", None)
+    if bot_id is not None:
+        return replied_user.id == bot_id
+
+    bot_username = getattr(bot, "username", None)
+    return bool(bot_username and replied_user.username == bot_username)
+
+
+def _allows_regular_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    chat = update.effective_chat
+    if chat is None:
+        return False
+    if chat.type == ChatType.PRIVATE:
+        return True
+    if chat.type in {ChatType.GROUP, ChatType.SUPERGROUP}:
+        return _is_reply_to_this_bot(update, context)
+    return False
+
+
 async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    del context
     message = update.effective_message
     if message is None:
+        return
+    if not _allows_regular_command(update, context):
         return
 
     first_name = update.effective_user.first_name if update.effective_user else "朋友"
@@ -99,8 +129,9 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def whoami(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    del context
     if update.effective_message is None or update.effective_user is None:
+        return
+    if not _allows_regular_command(update, context):
         return
     await update.effective_message.reply_text(
         f"你的 Telegram 数字 ID：{update.effective_user.id}\n"
@@ -113,6 +144,8 @@ async def llmcheck(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     chat = update.effective_chat
     if message is None or user is None or chat is None:
+        return
+    if not _allows_regular_command(update, context):
         return
 
     admin_ids: frozenset[int] = context.application.bot_data["tarot_admin_ids"]
@@ -533,7 +566,6 @@ def build_application(settings: Settings) -> Application:
     application.add_handler(
         CallbackQueryHandler(tarot_consent, pattern=r"^tarot:(yes|no):")
     )
-    application.add_handler(MessageHandler(filters.COMMAND, reply))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, tarot_text_router)
     )
