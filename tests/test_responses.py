@@ -42,9 +42,5 @@ def test_plain_text_is_not_echoed() -> None:
     assert "/help" not in reply
 
 
-def test_unknown_command_points_to_start_without_using_help() -> None:
-    reply = reply_for_text("/missing")
-
-    assert reply is not None
-    assert "/start" in reply
-    assert "/help" not in reply
+def test_unknown_slash_command_is_ignored_to_avoid_clashes() -> None:
+    assert reply_for_text("/missing") is None

@@ -46,6 +46,14 @@ def test_application_registers_tarot_state_and_admin_ids() -> None:
     assert "tarot_analyzer" not in application.bot_data
 
 
+def test_handlers_do_not_register_catch_all_slash_command_handler() -> None:
+    handlers_source = (Path(__file__).parents[1] / "schedule_bot" / "handlers.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "MessageHandler(filters.COMMAND" not in handlers_source
+
+
 def test_tarot_intros_include_requested_tone() -> None:
     combined = "\n".join(TAROT_INTROS)
 
@@ -111,12 +119,47 @@ def test_help_command_is_silently_ignored_by_handler() -> None:
     update = SimpleNamespace(
         effective_message=message,
         effective_user=SimpleNamespace(first_name="Jay"),
+        effective_chat=SimpleNamespace(type="private"),
     )
     context = SimpleNamespace()
 
     asyncio.run(reply(update, context))
 
     message.reply_text.assert_not_awaited()
+
+
+def test_regular_group_command_is_ignored_unless_replying_to_bot() -> None:
+    message = SimpleNamespace(text="/ping", reply_text=AsyncMock())
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(first_name="Jay"),
+        effective_chat=SimpleNamespace(type="group"),
+    )
+    context = SimpleNamespace(bot=SimpleNamespace(id=1000, username="TerroirTester"))
+
+    asyncio.run(reply(update, context))
+
+    message.reply_text.assert_not_awaited()
+
+
+def test_regular_group_command_works_when_replying_to_bot() -> None:
+    message = SimpleNamespace(
+        text="/ping",
+        reply_to_message=SimpleNamespace(
+            from_user=SimpleNamespace(id=1000, username="TerroirTester")
+        ),
+        reply_text=AsyncMock(),
+    )
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(first_name="Jay"),
+        effective_chat=SimpleNamespace(type="group"),
+    )
+    context = SimpleNamespace(bot=SimpleNamespace(id=1000, username="TerroirTester"))
+
+    asyncio.run(reply(update, context))
+
+    message.reply_text.assert_awaited_once_with("pong：Bot 正常在线。")
 
 
 def test_non_admin_cannot_start_tarot() -> None:
@@ -186,9 +229,7 @@ def test_llmcheck_requires_admin_and_openai_configuration() -> None:
 
     asyncio.run(llmcheck(non_admin_update, context))
 
-    non_admin_message.reply_text.assert_awaited_once_with(
-        "这项检查只对 Terroir 管理员开放。"
-    )
+    non_admin_message.reply_text.assert_not_awaited()
 
     admin_message = SimpleNamespace(reply_text=AsyncMock())
     admin_update = SimpleNamespace(
@@ -216,6 +257,9 @@ def test_llmcheck_sends_detailed_results_privately_from_group() -> None:
             )
 
     group_message = SimpleNamespace(reply_text=AsyncMock())
+    group_message.reply_to_message = SimpleNamespace(
+        from_user=SimpleNamespace(id=1000, username="TerroirTester")
+    )
     admin_dm = AsyncMock()
     update = SimpleNamespace(
         effective_message=group_message,
@@ -230,7 +274,7 @@ def test_llmcheck_sends_detailed_results_privately_from_group() -> None:
                 "tarot_analyzer": FakeAnalyzer(),
             }
         ),
-        bot=SimpleNamespace(send_message=admin_dm),
+        bot=SimpleNamespace(id=1000, username="TerroirTester", send_message=admin_dm),
     )
 
     asyncio.run(llmcheck(update, context))
