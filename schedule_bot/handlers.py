@@ -93,7 +93,9 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     first_name = update.effective_user.first_name if update.effective_user else "朋友"
-    await message.reply_text(reply_for_text(message.text or "", first_name=first_name))
+    response = reply_for_text(message.text or "", first_name=first_name)
+    if response is not None:
+        await message.reply_text(response)
 
 
 async def whoami(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -523,7 +525,7 @@ def build_application(settings: Settings) -> Application:
             fallback_model=settings.openai_fallback_model,
         )
 
-    for command in ("start", "help", "ping", "about"):
+    for command in ("start", "ping", "about"):
         application.add_handler(CommandHandler(command, reply))
     application.add_handler(CommandHandler("whoami", whoami))
     application.add_handler(CommandHandler("llmcheck", llmcheck))

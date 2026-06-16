@@ -16,7 +16,9 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.smoke_test is not None:
-        print(reply_for_text(args.smoke_test, first_name="测试用户"))
+        reply = reply_for_text(args.smoke_test, first_name="测试用户")
+        if reply is not None:
+            print(reply)
         return
 
     run()
@@ -24,4 +26,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -31,4 +31,4 @@ This repository is a small Python Telegram bot maintained by a beginner.
 - Keep functions short and names explicit.
 - Do not add a database until a requested feature needs persistent data.
 - Keep one production replica while the bot uses long polling.
-- Preserve `/start`, `/help`, `/ping`, and plain-text echo behavior unless the task explicitly changes them.
+- Preserve `/start`, `/ping`, and plain-text echo behavior unless the task explicitly changes them.

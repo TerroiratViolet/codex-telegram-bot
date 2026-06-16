@@ -13,6 +13,7 @@ from schedule_bot.handlers import (
     _is_expected_reply,
     build_application,
     llmcheck,
+    reply,
     tarot_consent,
     tarot_start,
     tarot_text_router,
@@ -101,6 +102,19 @@ def test_plain_text_without_tarot_session_is_ignored() -> None:
     )
 
     asyncio.run(tarot_text_router(update, context))
+
+    message.reply_text.assert_not_awaited()
+
+
+def test_help_command_is_silently_ignored_by_handler() -> None:
+    message = SimpleNamespace(text="/help", reply_text=AsyncMock())
+    update = SimpleNamespace(
+        effective_message=message,
+        effective_user=SimpleNamespace(first_name="Jay"),
+    )
+    context = SimpleNamespace()
+
+    asyncio.run(reply(update, context))
 
     message.reply_text.assert_not_awaited()
 
